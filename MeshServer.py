@@ -269,9 +269,6 @@ def register_server_start (server):
 def register_server_stop (server):
     print (f"Server {server} has stopped")
 
-def register_server_restart (server):
-    print (f"Server {server} is executing a restart")
-
 def register_server_suspend (server):
     print (f"Server {server} has suspended")
 
