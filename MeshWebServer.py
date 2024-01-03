@@ -48,20 +48,12 @@ def web_server_server_page(server_name):
         return "Server not found", 404
 
 def read_global_config ():
-    if not os.path.exists ("config.ini"):
-        generate_global_config ()
-    
-    config = configparser.ConfigParser()
-    config.read ("config.ini")
-    return config
-
-def generate_global_config ():
-    new_config = configparser.ConfigParser()
-    new_config['WebServer'] = {
-        'port': 5000
-    }
-    with open ("config.ini", 'w') as config_file:
-        new_config.write (config_file)
+    if os.path.exists ("config.ini"):    
+        config = configparser.ConfigParser()
+        config.read ("config.ini")
+        return config
+    else:
+        return None
 
 #@app.route('/user_reports')
 #def web_server_user_reports():
