@@ -17,9 +17,10 @@
 
     - pygtail: A Python library for tailing log files.
     - psutil: A cross-platform library for retrieving information on running processes and system utilization.
-    - flask: Web framework for the local web server
-    - flask-bootstrap: Web framework for the local web server
-    - requests: Used to web server monitoring
+    - flask: Web framework for the local web server.
+    - flask-bootstrap: Web framework for the local web server.
+    - gunicorn: Web framework for the local web server.
+    - requests: Used to web server monitoring.
 
     Use this command to install the dependencies:
     pip install -r requirements.txt
@@ -65,6 +66,7 @@ import ast
 from datetime import datetime, time
 import time
 import requests
+import shutil
 
 class Server:
     def __init__(self, name, config, server_info):
@@ -164,6 +166,11 @@ class Server:
         self.current_line = 0
 
     def analyze_log(self):
+        if self.active_hours:
+            if not is_active_hours (self.start_time, self.end_time):
+                self.suspend_server()
+                return
+        
         with self.lock:
             server_logging = True
             while server_logging:
@@ -199,8 +206,7 @@ class Server:
                                 self.server_info.gamemode_change (game_class)
 
                                 if self.active_hours:
-                                    current_time = datetime.now().time()
-                                    if not (self.start_time <= current_time <= self.end_time):
+                                    if not is_active_hours (self.start_time, self.end_time):
                                         self.suspend_server()
                                         server_active = False
                                         server_logging = False
@@ -305,42 +311,51 @@ wait_for_web_server_thread = None
 
 def register_player_join (server, player):
     print (f"Player {player} has joined {server}")
+    write_to_log (server, f"Player {player} connected.")
     send_server_info ()
 
 def register_player_leave (server, player):
     print (f"Player {player} has left {server}")
+    write_to_log (server, f"Player {player} has disconnected.")
     send_server_info ()
 
 def register_server_restart (server, reason):
-    print (f"Server {server} has restarted for: {reason}")
+    print (f"Server {server} has restarted for: {reason}.")
+    write_to_log (server, f"Server restarted for: {reason}.")
     send_server_info ()
 
 def register_server_gamemode (server, gamemode):
     print (f"Server {server} has changed gamemode to {gamemode}")
+    write_to_log (server, f"Gamemode changed to {gamemode}.")
     send_server_info ()
 
 def register_server_start (server):
     print (f"Server {server} has started")
+    write_to_log (server, f"Server started.")
     send_server_info ()
 
 def register_server_stop (server):
     print (f"Server {server} has stopped")
+    write_to_log (server, f"Server stopped.")
     send_server_info ()
 
 def register_server_suspend (server):
     print (f"Server {server} has suspended")
+    write_to_log (server, "Server suspended.")
     send_server_info ()
 
 def register_server_wake (server):
     print (f"Server {server} woke from suspending")
+    write_to_log (server, "Server waking from suspension.")
     send_server_info ()
 
 def send_server_info ():
+    global web_server_active
+    global wait_for_web_server_thread
     if not web_server_active:
         if wait_for_web_server_thread == None:
             start_wait_for_web_server_thread()
         return
-    global server_info
     server_info_dicts = [
     {
         "server_name": info.server_name,
@@ -357,8 +372,10 @@ def send_server_info ():
     for info in server_info
     ]
     json_data = json.dumps (server_info_dicts)
-    url = "http://127.0.0.1:5000/update_server_info"
+    #url = "http://127.0.0.1:5000/update_server_info"
+    url = "http://192.168.1.202:5000/update_server_info"
     response = requests.post(url, json={"server_info": json_data})
+    print (response.text)
 
 def output_server_info():
     for server in servers:
@@ -374,11 +391,19 @@ def output_server_info():
         print()
 
 def begin_server (config, name):
+    global server_info
     server_instance_info = ServerInfo (name)
     server_instance = Server(name, config, server_instance_info)
     servers.append (server_instance)
     server_info.append (server_instance_info)
     server_instance.init_server()
+
+def is_active_hours (start_time, end_time):
+    current_time = datetime.now().time()
+    if start_time <= current_time <= end_time:
+        return True
+    else:
+        return False
 
 def log_is_new_gamemode(line):
     match = re.search(r'LogBlueprintUserMessages: Map vote has concluded, travelling to (.+)', line)
@@ -448,7 +473,8 @@ def check_reports (saved_file_path, server):
     
 def ping_web_server ():
     try:
-        response = requests.get("http://127.0.0.1:5000")
+        #response = requests.get("http://127.0.0.1:5000")
+        response = requests.get ("http://192.168.1.202:5000")
         if response.status_code // 100 == 2:
             print("Server is online")
             return True
@@ -459,6 +485,8 @@ def ping_web_server ():
         return False
 
 def wait_for_web_server ():
+    global web_server_active
+    global wait_for_web_server_thread
     while not web_server_active:
         if ping_web_server():
             web_server_active = True
@@ -466,6 +494,7 @@ def wait_for_web_server ():
         time.sleep (30)
 
 def start_wait_for_web_server_thread():
+    global wait_for_web_server_thread
     if wait_for_web_server_thread == None:
         wait_for_web_server_thread = threading.Thread(target=wait_for_web_server, daemon=True).start()
 
@@ -484,7 +513,35 @@ def parse_report(file_contents, server):
     return UserReport(server, target, target_id, source, source_id, date, reason, text)
 
 #def check_report_handled (report):
-    
+
+def write_to_log (server, content):
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%d-%m-%Y %H:%M:%S")
+    with open("log.txt", 'a') as log_file:
+        log_file.write(f"\n[{formatted_datetime}] {server} - {content}")
+
+def create_log_file():
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%d-%m-%Y %H_%M_%S")
+    if not os.path.exists("log.txt"):
+        with open("log.txt", 'w') as log_file:
+            log_file.write(f"[Start of log file: {formatted_datetime}]\n")
+    else:
+        save_log_file()
+        with open("log.txt", 'w') as log_file:
+            log_file.write(f"[Start of log file: {formatted_datetime}]\n")
+
+def save_log_file():
+    if not os.path.exists("Logs"):
+        os.makedirs("Logs")
+
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%d_%m_%Y-%H.%M.%S")
+
+    shutil.move("log.txt", f"Logs/log_{formatted_datetime}.txt")
+
+    with open("log.txt", 'w') as log_file:
+        log_file.write("")    
 
 def read_config(config_file_path):
     config = configparser.ConfigParser()
@@ -535,7 +592,7 @@ def read_global_config ():
 def generate_global_config ():
     new_config = configparser.ConfigParser()
     new_config['WebServer'] = {
-        'web_server_enabled': True
+        'web_server_enabled': True,
         'port': 5000
     }
     with open ("config.ini", 'w') as config_file:
@@ -550,6 +607,8 @@ def async_output_server_info():
 def main():
     configs = get_server_configs()
 
+    create_log_file()
+
     for config in configs:
         name = config['folder']
         config = config['config']
@@ -558,6 +617,9 @@ def main():
     #threading.Thread(target=async_output_server_info, daemon=True).start()
     
     global_config = read_global_config()
+    
+    global web_server_active
+
     web_server_enabled = ast.literal_eval(global_config['WebServer']['web_server_enabled'])
     if web_server_enabled:
         if ping_web_server():
