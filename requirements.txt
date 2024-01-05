@@ -1,0 +1,2 @@
+pygtail==0.6.1
+psutil==5.8.0

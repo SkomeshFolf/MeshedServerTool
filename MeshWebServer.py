@@ -12,18 +12,33 @@ server_info = []
 def update_server_info():
     global server_info
 
-    server_info = []
     try:
         data = request.json
+
+        if 'server_info' not in data:
+            raise ValueError ('Missing "server_info" key in JSON data')
+        
         server_info_data = json.loads(data['server_info'])
+
+        server_info = []        
 
         for info in server_info_data:
             server_name = info['server_name']
             server_obj = ServerInfo(name=server_name)
             server_obj.__dict__.update(info)
             server_info.append(server_obj)
+        
+        response_data = {'servers': []}
 
-        return "ServerInfo updated successfully"
+        for server in server_info:
+            server_data = {
+                'server_name': server.server_name,
+                'current_users': len(server.current_users),
+                'server_status': server.server_status
+            }
+            response_data['servers'].append(server_data)
+
+        return jsonify(response_data)
     except Exception as e:
         print(f"Error updating server info: {e}")
         return 'Error updating server info', 500
