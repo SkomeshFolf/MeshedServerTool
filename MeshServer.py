@@ -92,7 +92,7 @@ class Server:
         if not self.monitor_only:
             self.start_server()
         
-        init_analysis()
+        self.init_analysis()
 
     def init_analysis (self):
         self.analysis_thread = threading.Thread (target=self.analyze_log, daemon=True)
@@ -441,18 +441,18 @@ def get_server_configs():
 def write_to_log (server, content):
     current_datetime = datetime.now()
     formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_file_path, 'a') as log_file:
+    with open("log.txt", 'a') as log_file:
         log_file.write(f"\n[{formatted_datetime}] {server} - {content}")
 
 def create_log_file():
     current_datetime = datetime.now()
     formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
     if not os.path.exists("log.txt"):
-        with open(log_file_path, 'w') as log_file:
+        with open('log.txt', 'w') as log_file:
             log_file.write(f"[Start of log file: {formatted_datetime}]\n")
     else:
         save_log_file()
-        with open(log_file_path, 'w') as log_file:
+        with open('log.txt', 'w') as log_file:
             log_file.write(f"[Start of log file: {formatted_datetime}]\n")
     
 def save_log_file():
@@ -464,7 +464,7 @@ def save_log_file():
     
     shutil.move("log.txt", f"Logs/log_{formatted_datetime}.txt")
     
-    with open(log_file_path, 'w') as log_file:
+    with open('log.txt', 'w') as log_file:
         log_file.write("")
     
 
