@@ -90,6 +90,7 @@ class Server:
         self.server_process = None
         self.log = None
         self.config = config
+        self.server_started = False
 
         self.current_line = 0
 
@@ -114,6 +115,11 @@ class Server:
             self.server_info.server_restarts = self.server_info.server_restarts + 1
             self.server_info.server_status_change (5)
 
+    def active_server (self):
+        if self.server_info.server_status != 5:
+            self.server_info.server_status_change (5)
+            register_server_active (self.name)
+
     def stop_server(self):
         self.server_info.server_status_change (0)
         register_server_stop (self.name)
@@ -132,6 +138,7 @@ class Server:
                 pass
             finally:
                 self.server_process = None
+
     def suspend_server(self):
         self.stop_server()
         self.server_info.server_status_change (-1)
@@ -222,6 +229,8 @@ class Server:
                                         server_active = False
                                         break
 
+                                self.active_server ()
+
                             player_id = log_is_player_joined(line)
                             if player_id:
                                 self.server_info.player_join(player_id)
@@ -235,12 +244,12 @@ class Server:
                                 self.server_info.server_status_change (4)
                                 register_server_idle (self.name)
 
-                            if not server_started:
+                            if not self.server_started:
                                 start_mode = log_is_starting_gamemode (line)
                                 if start_mode:
                                     self.server_info.gamemode_change (start_mode)
                                     register_server_gamemode (self.name, start_mode)
-                                    server_started = True
+                                    self.server_started = True
 
                     # Handle reports
                     send_server_info ()
@@ -267,7 +276,7 @@ class ServerInfo:
     def player_leave (self, player):
         self.total_user_disconnects += 1
         self.disconnected_users.add(player)
-        self.current_users.remove(player)
+        self.current_users.discard(player)
 
     def gamemode_change (self, gamemode):
         if gamemode != self.previous_gamemode:
@@ -352,6 +361,11 @@ def register_server_start (server):
     write_to_log (server, f"Server started.")
     send_server_info ()
 
+def register_server_active (server):
+    print (f"Server {server} is now active")
+    write_to_log (server, f"Server active.")
+    send_server_info ()
+
 def register_server_stop (server):
     print (f"Server {server} has stopped")
     write_to_log (server, f"Server stopped.")
@@ -397,9 +411,9 @@ def send_server_info ():
     }
     for info in server_info
     ]
-    config = read_global_config
+    config = read_global_config()
     json_data = json.dumps (server_info_dicts)
-    url = f"http://127.0.0.1:{config['WebServer']['port']}}/update_server_info"
+    url = (f"http://127.0.0.1:{config['WebServer']['port']}/update_server_info")
     response = requests.post(url, json={"server_info": json_data})
 
 def output_server_info():
@@ -434,15 +448,17 @@ def is_active_hours (start_time, end_time):
 
 def log_is_new_gamemode(line):
     match = re.search(r'Map vote has concluded, travelling to (.+)', line)
-    return match.group(1) if match else None
+    if match: 
+        return match.group(1) if match else None
 
 def log_is_starting_gamemode (line):
     match = re.search (r'LogLoad: LoadMap: /Game/SCPPandemic/Maps/([^/]+)/', line)
-    return match.group(1) if match else None
+    if match:
+        return match.group(1) if match else None
 
 def log_is_entering_idle (line):
     match = re.search (r'Entering Standby, going to standby map M_ServerDefault.', line)
-    return match.group(1) if match else None
+    return bool (match)
 
 def log_is_player_joined (line):
     match = re.search(r'Sending auth result to user (\d+)', line)
