@@ -35,7 +35,7 @@ def update_server_info():
                 server_name = info['server_name']
                 server_obj = ServerInfo(name=server_name)
                 server_obj.__dict__.update(info)
-                server_info.append(server_obj)
+                get_servers()[server_name] = server_obj
         
         response_data = {'servers': []}
 
@@ -50,20 +50,19 @@ def update_server_info():
 
         return jsonify(response_data)
     except Exception as e:
-        print(f"Error updating server info: {e}")
+        print(f"Error updating server info: {e}, {data}")
         return 'Error updating server info', 500
 
 @app.route('/')
 def web_server_home ():
-    global server_info
-    return render_template('index.html', servers=server_info)
+    return render_template('index.html', servers=get_servers())
 
 @app.route('/server/<server_name>')
 def web_server_server_page(server_name):
-    global server_info
+    server_info = get_servers()
 
     # Find the server with the matching name in the list
-    matching_servers = [server for server in server_info if server.server_name == server_name]
+    matching_servers = [server for server in server_info.values() if server.server_name == server_name]
 
     if matching_servers:
         # Use the first matching server (assuming server names are unique)

@@ -352,10 +352,13 @@ def register_server_wake (server):
 def send_server_info ():
     global web_server_active
     global wait_for_web_server_thread
+    global server_info
+    
     if not web_server_active:
         if wait_for_web_server_thread == None:
             start_wait_for_web_server_thread()
         return
+    
     server_info_dicts = [
     {
         "server_name": info.server_name,
@@ -372,12 +375,12 @@ def send_server_info ():
     for info in server_info
     ]
     json_data = json.dumps (server_info_dicts)
-    #url = "http://127.0.0.1:5000/update_server_info"
-    url = "http://192.168.1.202:5000/update_server_info"
+    url = "http://127.0.0.1:5000/update_server_info"
     response = requests.post(url, json={"server_info": json_data})
-    print (response.text)
 
 def output_server_info():
+    global servers
+
     for server in servers:
         server_info = server.server_info
         print(f"{server.name}")
@@ -473,10 +476,8 @@ def check_reports (saved_file_path, server):
     
 def ping_web_server ():
     try:
-        #response = requests.get("http://127.0.0.1:5000")
-        response = requests.get ("http://192.168.1.202:5000")
+        response = requests.get("http://127.0.0.1:5000")
         if response.status_code // 100 == 2:
-            print("Server is online")
             return True
         else:
             print(f"Server returned an error: {response.status_code}")
@@ -487,6 +488,7 @@ def ping_web_server ():
 def wait_for_web_server ():
     global web_server_active
     global wait_for_web_server_thread
+    
     while not web_server_active:
         if ping_web_server():
             web_server_active = True
@@ -606,7 +608,7 @@ def async_output_server_info():
     
 def main():
     configs = get_server_configs()
-
+    
     create_log_file()
 
     for config in configs:
