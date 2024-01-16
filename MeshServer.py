@@ -36,7 +36,7 @@
         [WebServer]
             - web_server_enabled:       Can be true or false. If true, the tool assumes that the monitoring web server is active and will use it.
             - web_server_address:       Custom address of the web server. If hosted on same machine, this is usually '127.0.0.1'.
-            - port:                     Port of the web server. By default is 5000.
+            - web_server_port:                     Port of the web server. By default is 5000.
         [MOTD]
             - global_server_motd:       An MOTD message that will be used in every server instance.
 
@@ -116,7 +116,7 @@ class Server:
 
         self.current_line = 0
         self.idle_time = -1
-        self.log_check_interval = read_global_config()['General']['log_checking_interval']
+        self.log_check_interval = int (read_global_config()['General']['log_checking_interval'])
         self.last_crash = None
 
         self.lock = threading.Lock()
@@ -154,7 +154,7 @@ class Server:
                 for message in self.motd:
                     message_file.write (f"{message},2,00:00:{interval}")
                     interval += 3
-                if self.last_crash not None:
+                if self.last_crash != None:
                     message_file.write (f"The last server crashed was at: {self.last_crash}. Lets hope it doesn't crash again!, 2, 00:00:{interval}")
                     interval += 3
                 if self.active_hours:
@@ -287,7 +287,7 @@ class Server:
 
                     # Has the server been idle for 5 minutes? Should the server restart anyways?
                     if self.idle_time > 0:
-                        if self.gamemode_changes > 1:
+                        if self.server_info.gamemode_changes > 1:
                             if time.time() > self.idle_time + 300:
                                 self.restart_server("Server idle")
                         
@@ -305,6 +305,7 @@ class Server:
                                 if game_class == "Entry":
                                     self.idle_server()
                                 else:
+                                    print (f"{game_class}, {game_class == 'Entry'}")
                                     self.server_info.gamemode_change (game_class)
 
                                 # Suspend the server if beyond active hours
@@ -349,7 +350,7 @@ class Server:
                                 start_mode = log_is_starting_gamemode (line)
                                 if start_mode:
                                     self.server_info.gamemode_change (start_mode)
-                                    register_server_gamemode (self.name, start_mode)
+                                    self.idle_server()
                                     self.server_started = True
 
                     # TODO: Handle reports
@@ -665,7 +666,7 @@ def ping_web_server ():
         return False
 
     try:
-        response = requests.get(f"http://{config['WebServer']['web_server_address']}:{config['WebServer']['port']}")
+        response = requests.get(f"http://{config['WebServer']['web_server_address']}:{config['WebServer']['web_server_port']}")
         if response.status_code // 100 == 2:
             return True
         else:
