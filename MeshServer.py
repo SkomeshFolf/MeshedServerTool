@@ -115,6 +115,7 @@ class Server:
         self.server_started = False
 
         self.current_line = 0
+        self.idle_time = -1
         self.log_check_interval = read_global_config()['General']['log_checking_interval']
         self.last_crash = None
 
@@ -214,19 +215,24 @@ class Server:
     def restart_server(self, reason):
         self.server_info.server_status_change (3)
         register_server_restart (self.name, reason)
+        if not reason:
+            self.init_motd()
+
         self.stop_server()
         self.start_server()
         
     def idle_server (self):
+        self.idle_time = time.time()
         self.server_info.server_status_change (4)
         register_server_idle (self.name)
 
-    def server_crashed (self):
+    def server_crashed (self, monitor_only):
         print ("Server crashed")
         self.last_crash = datetime.now().time()
         self.init_motd ()
         self.server_info.server_status_change (-2)
-        self.restart_server("Server crash")
+        if not monitor_only:
+            self.restart_server ("Server crash")
 
     def reset_vars(self):
         self.log = None
@@ -239,34 +245,53 @@ class Server:
         self.server_info.gamemode_changes = 0
         self.current_line = 0
         self.last_crash = None
+   
+    def is_active_hours (self):
+        current_time = datetime.now().time()
+        if self.start_time <= current_time <= self.end_time:
+            return True
+        else:
+            return False
 
     def analyze_log(self):
+        # If this starts when we are beyond the active hours, if it is, suspend.
         if self.active_hours:
-            if not is_active_hours (self.start_time, self.end_time):
+            if not self.is_active_hours ():
                 self.suspend_server()
                 return
         
         with self.lock:
+            # Keep analyzing the log until it should stop.
+            # This will continue until the server suspends.
             server_logging = True
             while server_logging:
                 time.sleep(3)
 
+                # Setup the log file for reading
                 try:
                     self.log = pygtail.Pygtail(self.log_file_path)
                 except FileNotFoundError:
                     print(f"Error: Log file {self.log_file_path} not found.")
                     return
                 
+                # Keep executing while the server is active.
+                # Server will be labeled inactive if the server restarts, suspends or crashes.
                 server_active = True
-
                 while server_active:
 
-                    if not self.monitor_only:
-                        if self.server_process.poll() != None:
-                            self.server_crashed()
-                            server_active = False
-                            break
+                    # Check if the server has crashed
+                    if self.server_process.poll() != None:
+                        self.server_crashed(self.monitor_only)
+                        server_active = False
+                        break
+
+                    # Has the server been idle for 5 minutes? Should the server restart anyways?
+                    if self.idle_time > 0:
+                        if self.gamemode_changes > 1:
+                            if time.time() > self.idle_time + 300:
+                                self.restart_server("Server idle")
                         
+                    # Go through each new line 
                     with open(self.log_file_path, 'r') as log_file:
                         for _ in range(self.current_line):
                             log_file.readline()
@@ -276,18 +301,21 @@ class Server:
 
                             game_class = log_is_new_gamemode(line)
                             if game_class:
+                                # Check if new gamemode is an idle state
                                 if game_class == "Entry":
                                     self.idle_server()
                                 else:
                                     self.server_info.gamemode_change (game_class)
 
+                                # Suspend the server if beyond active hours
                                 if self.active_hours:
-                                    if not is_active_hours (self.start_time, self.end_time):
+                                    if not self.is_active_hours ():
                                         self.suspend_server()
                                         server_active = False
                                         server_logging = False
                                         break
 
+                                # Check if server should restart for either max gamemode changes or loading the wrong gamemode.
                                 if not self.monitor_only:
                                     if self.server_info.gamemode_changes > self.max_reloads:
                                         self.restart_server(f"Server reloaded {self.server_info.gamemode_changes} times")
@@ -298,20 +326,25 @@ class Server:
                                         server_active = False
                                         break
 
+                                # Declare the server is active
                                 self.active_server ()
 
+                            # Is the latest log a player joining? Log it in the server info.
                             player_id = log_is_player_joined(line)
                             if player_id:
                                 self.server_info.player_join(player_id)
 
+                            # Is the latest log a player leaving? Log it in the server info.
                             player_id = log_is_player_leave(line)
                             if player_id:
                                 self.server_info.player_leave(player_id)
 
+                            # Is the latest log the server entering an idle state? Enter idle state.
                             server_idle = log_is_entering_idle (line)
                             if server_idle:
                                 self.idle_server()
 
+                            # Is this the first time the server has started? Init the server.
                             if not self.server_started:
                                 start_mode = log_is_starting_gamemode (line)
                                 if start_mode:
@@ -319,7 +352,7 @@ class Server:
                                     register_server_gamemode (self.name, start_mode)
                                     self.server_started = True
 
-                    # Handle reports
+                    # TODO: Handle reports
                     send_server_info ()
                     time.sleep(self.log_check_interval)
 
@@ -527,13 +560,6 @@ def begin_server (config, name):
     servers.append (server_instance)
     server_info.append (server_instance_info)
     server_instance.init_server()
-
-def is_active_hours (start_time, end_time):
-    current_time = datetime.now().time()
-    if start_time <= current_time <= end_time:
-        return True
-    else:
-        return False
 
 def log_is_new_gamemode(line):
     match = re.search(r'Map vote has concluded, travelling to (.+)', line)
