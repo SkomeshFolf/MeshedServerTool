@@ -71,6 +71,11 @@ def web_server_server_page(server_name):
         print("Server not found")
         return "Server not found", 404
 
+@app.route ('/control_server', methods['POST'])
+def control_server ():
+    action = request.form.get('action')
+    
+
 def read_global_config ():
     if os.path.exists ("config.ini"):    
         config = configparser.ConfigParser()

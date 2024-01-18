@@ -48,7 +48,7 @@
                         'Idle': 'badge-secondary',
                         'Active': 'badge-success'
                     }[server.server_status] %}
-                    <span class="badge {{ badge_class }}" style="float: right">{{ server.server_status }}</span>
+                    <span class="badge {{ badge_class }}" style="float: right" id="stats_status">{{ server.server_status }}</span>
                 {% else %}
                     <div class="alert alert-warning" role="alert">
                         Empty or None
@@ -56,9 +56,16 @@
                 {% endif %}
             </div>
             <div class="card-body">
-                <p>Server Restarts: {{ server.server_restarts }}</p>
-                <p>Number of Gamemode Changes: {{ server.gamemode_changes }}</p>
-                <p>Current Gamemode: {{ server.previous_gamemode }}</p>
+                <div id="stats_body_info">
+                    <p>Server Restarts: {{ server.server_restarts }}</p>
+                    <p>Number of Gamemode Changes: {{ server.gamemode_changes }}</p>
+                    <p>Current Gamemode: {{ server.previous_gamemode }}</p>
+                </div>
+                <div id="stats_body_buttons"> 
+                    <button type="button" class="btn btn-danger" id="stopServerBtn">Stop Server</button>
+                    <button type="button" class="btn btn-warning" id="restartServerBtn">Restart Server</button>
+                    <button type="button" class="btn btn-success" id="startServerBtn">Start Server</button>
+                </div>
             </div>
         </div>
 
@@ -111,5 +118,45 @@
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            var status = $("#stats_status").text;
+            if (status == 'Offline' || status == 'Suspended' || status == 'Crashed')
+            {
+                $("#stopServerButton").hide();
+                $("#restartServerButton").hide();
+            }
+            else if (status == 'Waking' || status == 'Starting' || status == 'Restarting' || status == 'Idle' || status == 'Active')
+            {
+                $("#startServerButton").hide();
+            }
+
+            $("#stopServerButton").click (function() {
+                sendServerControlRequest ('stop');
+            });
+            $("#restartServerButton").click (function() {
+                sendServerControlRequest ('restart');
+            });
+            $("#startServerButton").click (function() {
+                sendServerControlRequest ('start');
+            });
+
+            function sendServerControlRequest(action) 
+            {
+                $.ajax({
+                    type: 'POST',
+                    url: '/control_server',
+                    data: { action: action },
+                    success: function(response) {
+                        console.log(response);
+                        // Handle the response as needed
+                    },
+                    error: function(error) {
+                        console.error('Error:', error);
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>
