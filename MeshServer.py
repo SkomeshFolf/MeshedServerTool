@@ -162,11 +162,11 @@ class Server:
             if (motd and motd != ''):
                 #message_file.write (f"{motd.strip()},0,00:00:06\n")
                 if crash_motd != None and self.last_crash != None:
-                    message_file.write(f"{global_motd}/{motd.strip()}/The last server crashed was at: {self.last_crash.strftime('%H:%M')} PST. Lets hope it doesn't crash again!,0,00:05:00\n")
+                    message_file.write(f"{global_motd}/{motd.strip()}/The last server crashed was at: {self.last_crash.strftime('%H:%M')} PST. Lets hope it doesn't crash again!,0,00:07:30\n")
                 else:
-                    message_file.write(f"{global_motd}/{motd.strip()},0,00:05:00\n")
+                    message_file.write(f"{global_motd}/{motd.strip()},0,00:07:30\n")
             if join_motd and join_motd != '':
-                message_file.write (f"{join_motd},2,00:00:03\n")
+                message_file.write (f"{join_motd},2,00:00:06\n")
             if self.active_hours:
                 end_time = datetime.combine (datetime.today(), self.end_time)
 
