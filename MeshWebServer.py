@@ -5,6 +5,7 @@ import configparser
 import threading
 import socket
 import MeshServer
+from MeshServer import ServerInfo
 
 app = Flask(__name__)
 
@@ -72,15 +73,16 @@ def web_server_server_page(server_name):
         print("Server not found")
         return "Server not found", 404
 
-@app.route ('/control_server', methods['POST'])
+@app.route ('/control_server', methods=['POST'])
 def control_server ():
-    action = request.get_json()
+    action = request.form.get("action")
+    server = request.form.get("server")
+    data = f"{server}:{action}"
     server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect(server_socket)
-        client_socket.send(action.encode ('utf-8'))
+        client_socket.send(data.encode ('utf-8'))
     
-
 def read_global_config ():
     if os.path.exists ("config.ini"):    
         config = configparser.ConfigParser()

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title id="server_name">{{ server.server_name }} Details</title>
+    <title>{{ server.server_name }} Details</title>
     <!-- Bootstrap CSS (replace the link with your local or CDN reference) -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <style>
@@ -28,8 +28,57 @@
             padding: 10px;
         }
     </style>
+    <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            var status = $("#stats_status").text();
+            if (status == 'Offline' || status == 'Suspended' || status == 'Crashed' || status == 'Stopping')
+            {
+                $("#killServerBtn").hide();
+                $("#stopServerBtn").hide();
+                $("#restartServerBtn").hide();
+            }
+            else if (status == 'Waking' || status == 'Starting' || status == 'Restarting' || status == 'Idle' || status == 'Active')
+            {
+                $("#startServerBtn").hide();
+            }
+
+            $("#killServerBtn").click (function() {
+                sendServerControlRequest ('kill');
+            });
+            $("#stopServerBtn").click (function() {
+                sendServerControlRequest ('stop');
+            });
+            $("#restartServerBtn").click (function() {
+                sendServerControlRequest ('restart');
+            });
+            $("#startServerBtn").click (function() {
+                sendServerControlRequest ('start');
+            });
+
+            function sendServerControlRequest(action) 
+            {
+                $.ajax({
+                    type: 'POST',
+                    url: '/control_server',
+                    data: { action: action, server: $("#server_name").text() },
+                    success: function(response) {
+                        console.log(response);
+                        // Handle the response as needed
+                    },
+                    error: function(error) {
+                        console.error('Error:', error);
+                    }
+                });
+            }
+        });
+    </script>
 </head>
 <body>
+    <p style="display: none" id="server_name">{{ server.server_name }}</p>
     <div class="container">
         <h1>{{ server.server_name }} Details</h1>
 
@@ -62,7 +111,8 @@
                     <p>Current Gamemode: {{ server.previous_gamemode }}</p>
                 </div>
                 <div id="stats_body_buttons"> 
-                    <button type="button" class="btn btn-danger" id="stopServerBtn">Stop Server</button>
+                    <button type="button" class="btn btn-danger" id="killServerBtn">Kill Server</button>
+                    <button type="button" class="btn btn-danger" id="stopServerBtn">Stop Server After Game</button>
                     <button type="button" class="btn btn-warning" id="restartServerBtn">Restart Server</button>
                     <button type="button" class="btn btn-success" id="startServerBtn">Start Server</button>
                 </div>
@@ -113,50 +163,5 @@
         </div>
         -->
     </div>
-
-    <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
-    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            var status = $("#stats_status").text;
-            if (status == 'Offline' || status == 'Suspended' || status == 'Crashed')
-            {
-                $("#stopServerButton").hide();
-                $("#restartServerButton").hide();
-            }
-            else if (status == 'Waking' || status == 'Starting' || status == 'Restarting' || status == 'Idle' || status == 'Active')
-            {
-                $("#startServerButton").hide();
-            }
-
-            $("#stopServerButton").click (function() {
-                sendServerControlRequest ('stop');
-            });
-            $("#restartServerButton").click (function() {
-                sendServerControlRequest ('restart');
-            });
-            $("#startServerButton").click (function() {
-                sendServerControlRequest ('start');
-            });
-
-            function sendServerControlRequest(action) 
-            {
-                $.ajax({
-                    type: 'POST',
-                    url: '/control_server',
-                    data: { action: action, server: $("#server_name").text },
-                    success: function(response) {
-                        console.log(response);
-                        // Handle the response as needed
-                    },
-                    error: function(error) {
-                        console.error('Error:', error);
-                    }
-                });
-            }
-        });
-    </script>
 </body>
 </html>
