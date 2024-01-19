@@ -3,8 +3,7 @@ import json
 import os
 import configparser
 import threading
-import socket
-import MeshServer
+from MeshServer import ServerInfo
 
 app = Flask(__name__)
 
@@ -74,11 +73,7 @@ def web_server_server_page(server_name):
 
 @app.route ('/control_server', methods['POST'])
 def control_server ():
-    action = request.get_json()
-    server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        client_socket.connect(server_socket)
-        client_socket.send(action.encode ('utf-8'))
+    action = request.form.get('action')
     
 
 def read_global_config ():

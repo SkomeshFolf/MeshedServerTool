@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title id="server_name">{{ server.server_name }} Details</title>
+    <title>{{ server.server_name }} Details</title>
     <!-- Bootstrap CSS (replace the link with your local or CDN reference) -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <style>
@@ -146,7 +146,7 @@
                 $.ajax({
                     type: 'POST',
                     url: '/control_server',
-                    data: { action: action, server: $("#server_name").text },
+                    data: { action: action },
                     success: function(response) {
                         console.log(response);
                         // Handle the response as needed
