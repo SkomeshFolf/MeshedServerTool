@@ -86,6 +86,7 @@ import ast
 from datetime import datetime, time, timedelta
 import time
 import shutil
+import socket
 
 class Server:
     def __init__(self, name, config, server_info):
@@ -441,6 +442,7 @@ main_log_file = None
 is_using_web_server = False
 web_server_online = False
 wait_for_web_server_thread = None
+server_socket = None
 
 def register_player_join (server, player):
     print (f"Player {player} has joined {server}")
@@ -806,6 +808,30 @@ def async_output_server_info():
         time.sleep(10)  
         #os.system('cls' if os.name == 'nt' else 'clear')  # Clear console
         output_server_info()
+
+def init_sockets ():
+    global server_socket
+    server_socket = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind (('127.0.0.1', int (read_global_config['WebServer']['web_server_port']) + 1))
+    socket_socket.listen(2)
+
+def listen_for_clients(): 
+    global server_socket
+
+    while True:
+        client_socket, client_address = server_socket.accept()
+        threading.thread (target=handle_client, args=(client_socket,)).start()
+
+def handle_client (client_socket):
+    data = client_socket.recv(1024).decode ('utf-8')
+    if data == "start":
+        # Do stuff
+    elif data == "restart":
+        # do stuff
+    elif data == "stop":
+        # do stuff
+    client_socket.close()
+
     
 def main():
     configs = get_server_configs()
@@ -826,6 +852,7 @@ def main():
 
     is_using_web_server = ast.literal_eval(global_config['WebServer']['web_server_enabled'])
     if is_using_web_server:
+        init_sockets()
         if ping_web_server():
             web_server_online = True
         else:
