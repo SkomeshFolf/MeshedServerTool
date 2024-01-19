@@ -173,6 +173,7 @@ class Server:
 
     def active_server (self):
         if self.server_info.server_status != 5:
+            self.idle_time = -1
             self.server_info.server_status_change (5)
             register_server_active (self.name)
 
@@ -307,7 +308,9 @@ class Server:
                                     self.idle_server()
                                 else:
                                     self.server_info.gamemode_change (game_class)
-                                    self.idle_time = -1
+                                    
+                                    # Declare the server is active
+                                    self.active_server ()
 
                                 # Suspend the server if beyond active hours
                                 if self.active_hours:
@@ -328,8 +331,7 @@ class Server:
                                         server_active = False
                                         break
 
-                                # Declare the server is active
-                                self.active_server ()
+                                
 
                             # Is the latest log a player joining? Log it in the server info.
                             player_id = log_is_player_joined(line)
