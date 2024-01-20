@@ -418,6 +418,7 @@ class ServerInfo:
         if gamemode != self.previous_gamemode:
             self.gamemode_changes += 1
             self.previous_gamemode = gamemode
+        register_server_gamemode (self.server_name, gamemode)
     
     def reset_variables (self):
         self.previous_gamemode = None
