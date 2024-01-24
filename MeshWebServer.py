@@ -17,6 +17,14 @@ def get_servers():
         g.servers = app.config['servers']
     return g.servers
 
+def get_logs():
+    output_lines = None
+    with open ('log.txt', 'r') as log:
+        all_lines = log.readlines()
+        output_lines = all_lines[-10:]  
+        
+    return output_lines
+
 def get_lock():
     return app.config['lock']
 
@@ -57,7 +65,7 @@ def update_server_info():
 
 @app.route('/')
 def web_server_home ():
-    return render_template('index.html', servers=get_servers())
+    return render_template('index.html', servers=get_servers(), logs=get_logs())
 
 @app.route('/server/<server_name>')
 def web_server_server_page(server_name):
