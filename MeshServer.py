@@ -172,6 +172,7 @@ class Server:
     def active_server (self):
         self.idle_time = -1
         if self.server_info.server_status != 5:
+            self.idle_time = -1
             self.server_info.server_status_change (5)
             register_server_active (self.name)
 

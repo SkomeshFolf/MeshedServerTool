@@ -97,7 +97,7 @@
                         'Idle': 'badge-secondary',
                         'Active': 'badge-success'
                     }[server.server_status] %}
-                    <span class="badge {{ badge_class }}" style="float: right" id="stats_status">{{ server.server_status }}</span>
+                    <span class="badge {{ badge_class }}" style="float: right">{{ server.server_status }}</span>
                 {% else %}
                     <div class="alert alert-warning" role="alert">
                         Empty or None
