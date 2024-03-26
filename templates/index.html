@@ -61,6 +61,15 @@
         </ul>
         <br>
     </div>
+    <div class="container">
+        <h1>Logs</h1>
+
+        <ul class="list-group">
+            {% for log in logs %}
+                <li class="list-group-item">{{ log }}</li>
+            {% endfor %}
+        </ul>
+    </div>
 
     <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>

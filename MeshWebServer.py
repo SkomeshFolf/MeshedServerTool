@@ -3,6 +3,8 @@ import json
 import os
 import configparser
 import threading
+import socket
+import MeshServer
 from MeshServer import ServerInfo
 
 app = Flask(__name__)
@@ -14,6 +16,14 @@ def get_servers():
     if 'servers' not in g:
         g.servers = app.config['servers']
     return g.servers
+
+def get_logs():
+    output_lines = None
+    with open ('log.txt', 'r') as log:
+        all_lines = log.readlines()
+        output_lines = all_lines[-10:]  
+        
+    return output_lines
 
 def get_lock():
     return app.config['lock']
@@ -55,7 +65,7 @@ def update_server_info():
 
 @app.route('/')
 def web_server_home ():
-    return render_template('index.html', servers=get_servers())
+    return render_template('index.html', servers=get_servers(), logs=get_logs())
 
 @app.route('/server/<server_name>')
 def web_server_server_page(server_name):
@@ -71,6 +81,16 @@ def web_server_server_page(server_name):
         print("Server not found")
         return "Server not found", 404
 
+@app.route ('/control_server', methods=['POST'])
+def control_server ():
+    action = request.form.get("action")
+    server = request.form.get("server")
+    data = f"{server}:{action}"
+    server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        client_socket.connect(server_socket)
+        client_socket.send(data.encode ('utf-8'))
+    
 def read_global_config ():
     if os.path.exists ("config.ini"):    
         config = configparser.ConfigParser()
