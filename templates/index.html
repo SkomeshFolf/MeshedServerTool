@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Monitor</title>
+    <!-- Bootstrap CSS (replace the link with your local or CDN reference) -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <style>
+        body {
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Server Monitor</h1>
+
+        <ul class="list-group">
+            {% for server_name, server_info in servers.items() %}
+				<pre>{{ server }}</pre>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <a href="{{ url_for('web_server_server_page', server_name=server_info.server_name) }}">
+                            <strong>{{ server_info.server_name }}</strong>
+                        </a>
+                        <br>
+                        Connected Players: {{ server_info.current_users|length }}
+                    </div>
+                    <div>
+                        {% set badge_class = {
+                            'Offline': 'badge-secondary',
+                            'Crashed': 'badge-danger',
+                            'Suspended': 'badge-info',
+                            'Stopping': 'badge-warning',
+                            'Waking': 'badge-info',
+                            'Starting': 'badge-warning',
+                            'Restarting': 'badge-warning',
+                            'Idle': 'badge-secondary',
+                            'Active': 'badge-success'
+                        }[server_info.server_status] %}
+                        <span class="badge {{ badge_class }}">Status: {{ server_info.server_status }}</span>
+                        
+                        
+                        <a href="{{ url_for('web_server_server_page', server_name=server_info.server_name) }}"
+                        class="btn btn-primary btn-sm">View Details</a>
+                    </div>
+                </li>
+            {% endfor %}
+        </ul>
+        <br>
+    </div>
+    <div class="container">
+        <h1>Logs</h1>
+
+        <ul class="list-group">
+            {% for log in logs %}
+                <li class="list-group-item">{{ log }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+</body>
+</html>

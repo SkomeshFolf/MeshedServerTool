@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ server.server_name }} Details</title>
+    <!-- Bootstrap CSS (replace the link with your local or CDN reference) -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <style>
+        body {
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .card {
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #007bff;
+            color: #fff;
+        }
+        .console-log, .log-entries {
+            max-height: 200px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+    </style>
+    <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            var status = $("#stats_status").text();
+            if (status == 'Offline' || status == 'Suspended' || status == 'Crashed' || status == 'Stopping')
+            {
+                $("#killServerBtn").hide();
+                $("#stopServerBtn").hide();
+                $("#restartServerBtn").hide();
+            }
+            else if (status == 'Waking' || status == 'Starting' || status == 'Restarting' || status == 'Idle' || status == 'Active')
+            {
+                $("#startServerBtn").hide();
+            }
+
+            $("#killServerBtn").click (function() {
+                sendServerControlRequest ('kill');
+            });
+            $("#stopServerBtn").click (function() {
+                sendServerControlRequest ('stop');
+            });
+            $("#restartServerBtn").click (function() {
+                sendServerControlRequest ('restart');
+            });
+            $("#startServerBtn").click (function() {
+                sendServerControlRequest ('start');
+            });
+
+            function sendServerControlRequest(action) 
+            {
+                $.ajax({
+                    type: 'POST',
+                    url: '/control_server',
+                    data: { action: action, server: $("#server_name").text() },
+                    success: function(response) {
+                        console.log(response);
+                        // Handle the response as needed
+                    },
+                    error: function(error) {
+                        console.error('Error:', error);
+                    }
+                });
+            }
+        });
+    </script>
+</head>
+<body>
+    <p style="display: none" id="server_name">{{ server.server_name }}</p>
+    <div class="container">
+        <h1>{{ server.server_name }} Details</h1>
+
+        <div class="card">
+            <div class="card-header">
+                Server Stats
+                {% if server.server_status %}
+                    {% set badge_class = {
+                        'Offline': 'badge-secondary',
+                        'Crashed': 'badge-danger',
+                        'Suspended': 'badge-info',
+                        'Stopping': 'badge-warning',
+                        'Waking': 'badge-info',
+                        'Starting': 'badge-warning',
+                        'Restarting': 'badge-warning',
+                        'Idle': 'badge-secondary',
+                        'Active': 'badge-success'
+                    }[server.server_status] %}
+                    <span class="badge {{ badge_class }}" style="float: right">{{ server.server_status }}</span>
+                {% else %}
+                    <div class="alert alert-warning" role="alert">
+                        Empty or None
+                    </div>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div id="stats_body_info">
+                    <p>Server Restarts: {{ server.server_restarts }}</p>
+                    <p>Number of Gamemode Changes: {{ server.gamemode_changes }}</p>
+                    <p>Current Gamemode: {{ server.previous_gamemode }}</p>
+                </div>
+                <div id="stats_body_buttons"> 
+                    <button type="button" class="btn btn-danger" id="killServerBtn">Kill Server</button>
+                    <button type="button" class="btn btn-danger" id="stopServerBtn">Stop Server After Game</button>
+                    <button type="button" class="btn btn-warning" id="restartServerBtn">Restart Server</button>
+                    <button type="button" class="btn btn-success" id="startServerBtn">Start Server</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                Connected Users
+            </div>
+            <div class="card-body">
+                <p class="card-text mb-3">Number of connected users:</p>
+                <div class="card">
+                    <div class="card-body">
+                        {% if server.current_users %}
+                            <ul class="list-group">
+                                {% for user in server.current_users %}
+                                    <li class="list-group-item">{{ user }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <div class="alert alert-warning" role="alert">
+                                Empty or None
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!--
+        <div class="card">
+            <div class="card-header">
+                Console View
+            </div>
+            <div class="card-body console-log">
+                <pre>{{ server.console }}</pre>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                Log View
+            </div>
+            <div class="card-body log-entries">
+                <pre>{{ server.log }}</pre>
+            </div>
+        </div>
+        -->
+    </div>
+</body>
+</html>

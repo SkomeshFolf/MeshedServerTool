@@ -1,0 +1,6 @@
+pygtail
+requests
+psutil
+flask
+flask-bootstrap
+gunicorn
