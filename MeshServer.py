@@ -121,6 +121,7 @@ class Server:
 
         self.server_process = None
         self.log = None
+        self.analysis_thread = None
         self.config = config
         self.server_started = False
 
@@ -219,8 +220,7 @@ class Server:
         register_server_suspend (self.name)
 
         while True:
-            current_time = datetime.now().time()
-            if self.start_time <= current_time <= self.end_time:
+            if is_active_hours (self.start_time, self.end_time):
                 break
 
             time.sleep (60)
@@ -402,7 +402,7 @@ class Server:
                     time.sleep(self.log_check_interval)
 
 class ServerInfo:
-    def __init__ (self, name):
+    def __init__ (self, name, status):
         self.server_name = name
         self.previous_gamemode = None
         self.joined_users = set()
@@ -440,7 +440,7 @@ class ServerInfo:
         self.gamemode_changes = 0
         self.total_user_joins = 0
         self.total_user_disconnects = 0
-    
+
     def server_status_change (self, new_status):
         status_dict = {
             -3: 'Offline',
@@ -505,7 +505,7 @@ def register_server_gamemode (server, gamemode):
     print (f"Server {server} has changed gamemode to {gamemode}")
     write_to_log (server, f"Gamemode changed to {gamemode}.")
     send_server_info ()
-
+    
 def register_server_start (server):
     print (f"Server {server} has started")
     write_to_log (server, f"Server started.")
@@ -606,6 +606,7 @@ def output_server_info():
     for server in servers:
         server_info = server.server_info
         print(f"{server.name}")
+        print(f"\tStatus: {server_info.server_status}")
         print(f"\tConnected Users: {server_info.current_users}")
         print(f"\tNumber of Users: {len(server_info.joined_users) - len(server_info.disconnected_users)}")
         print(f"\tTotal User Joins: {server_info.total_user_joins}")
@@ -828,6 +829,36 @@ def get_server_configs():
             configs.append({'folder': folder, 'config': config})
 
     return configs
+    
+def write_to_log (server, content):
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
+    with open("log.txt", 'a') as log_file:
+        log_file.write(f"\n[{formatted_datetime}] {server} - {content}")
+
+def create_log_file():
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
+    if not os.path.exists("log.txt"):
+        with open('log.txt', 'w') as log_file:
+            log_file.write(f"[Start of log file: {formatted_datetime}]\n")
+    else:
+        save_log_file()
+        with open('log.txt', 'w') as log_file:
+            log_file.write(f"[Start of log file: {formatted_datetime}]\n")
+    
+def save_log_file():
+    if not os.path.exists("Logs"):
+        os.makedirs("Logs")
+    
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
+    
+    shutil.move("log.txt", f"Logs/log_{formatted_datetime}.txt")
+    
+    with open('log.txt', 'w') as log_file:
+        log_file.write("")
+    
 
 def generate_config(config_file_path):
     newConfig = configparser.ConfigParser()
