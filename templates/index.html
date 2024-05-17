@@ -4,74 +4,134 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Server Monitor</title>
-    <!-- Bootstrap CSS (replace the link with your local or CDN reference) -->
+
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            function update_server_info (event)
+            {
+                var server_info = JSON.parse (event.data);
+                Object.values(server_info).forEach(function(server) {
+                // Update current users count
+                $('#' + server.server_name + '-current-users').text(server.current_users.length);
+                
+                // Update status badge
+                var badge_class = {
+                    'Offline': 'badge-secondary',
+                    'Crashed': 'badge-danger',
+                    'Suspended': 'badge-info',
+                    'Stopping': 'badge-warning',
+                    'Waking': 'badge-info',
+                    'Starting': 'badge-warning',
+                    'Restarting': 'badge-warning',
+                    'Idle': 'badge-secondary',
+                    'Active': 'badge-success'
+                }[server.server_status];
+
+                $('#' + server.server_name + '-status-badge').removeClass().addClass('badge ' + badge_class).text('Status: ' + server.server_status);
+                });
+            }
+            function update_logs (event)
+            {
+                var logs = JSON.parse (event.data);
+                
+                $('#logs').empty();
+                for (var i = 0; i < logs.length; i++)
+                {
+                    var element = logs[i];
+                    var listItem = $('<li></li>').addClass('list-group-item');
+                    listItem.text(element);
+                    $('#logs').append(listItem);
+                }
+            }
+
+
+            /*
+            $.ajax({
+                url: '/update_server_info',
+                type: 'POST',
+                contentType: 'application/json',
+                dataType: 'json',
+                success: function(response, textStatus, jqXHR) {
+                    console.log (jqXHR.status);
+                    if (jqXHR.status != 204) {
+                        update_server_info(response);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error ('Error updating server info', error);
+                }
+            });
+            */
+            var eventSource = new EventSource ('/stream_server_info');
+            eventSource.addEventListener('message', update_server_info);
+            var logEventSource = new EventSource ('/stream_all_server_logs');
+            logEventSource.addEventListener('message', update_logs);
+        });
+    </script>
 </head>
 <body>
 	<header>
 		<div class="px-3 py-2 bg-light text-black">
 			<div class="container">
 				<ul class="nav col-12 col-lg-auto my-2 justify-content-center my-md-0 text-small">
-					<li>
-						<a href="#" class="nav-link text-secondary">
-							<img src="media/icon_dashboard.svg" class="bi d-block mx-auto mb-1" width="32" height="32">
-								Dashboard
-							</img>
-						</a>
-					</li>
-					<li>
-						<a href="#" class="nav-link text-secondary">
-							<img src="media/icon_reports.svg" class="bi d-block mx-auto mb-1" width="32" height="32">
-								Reports
-							</img>
-						</a>
-					</li>
-					<li>
-						<a href="#" class="nav-link text-secondary">
-							<img src="media/icon_logs.svg" class="bi d-block mx-auto mb-1" width="32" height="32">
-								Logs
-							</img>
-						</a>
-					</li>
-					<li>
-						<a href="#" class="nav-link text-secondary">
-							<img src="media/icon_create.svg" class="bi d-block mx-auto mb-1" width="32" height="32">
-								Add Server
-							</img>
-						</a>
-					</li>
-					<li>
-						<a href="#" class="nav-link text-secondary">
-							<img src="media/icon_settings.svg" class="bi d-block mx-auto mb-1" width="32" height="32">
-								Server Settings
-							</img>
-						</a>
-					</li>
-					<li>
-						<a href="#" class="nav-link text-secondary">
-							<img src="media/icon_settings_2.svg" class="bi d-block mx-auto mb-1" width="32" height="32">
-								Settings
-							</img>
-						</a>
-					</li>
-				</ul>
+                    <li>
+                        <a href="{{ url_for ('web_server_home')}}" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_dashboard.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Dashboard
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_reports.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Reports
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_logs.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Logs
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_create.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Add Server
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_settings.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Server Settings
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_settings_2.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Settings
+                        </a>
+                    </li>
+                </ul>
+                
 			</div>
 		</div>
 	</header>
-    <div class="container">
-        <h1>Server Monitor</h1>
-
+    <div class="container" id="server-info-container">
         <ul class="list-group">
             {% for server_name, server_info in servers.items() %}
-				<pre>{{ server }}</pre>
-                <li class="list-group-item d-flex justify-content-between align-items-center">
+                <pre id="{{ server_name }}-pre">{{ server }}</pre>
+                <li class="list-group-item d-flex justify-content-between align-items-center" id="{{ server_name }}-li">
                     <div>
                         <a href="{{ url_for('web_server_server_page', server_name=server_info.server_name) }}">
                             <strong>{{ server_info.server_name }}</strong>
                         </a>
                         <br>
-                        Connected Players: {{ server_info.current_users|length }}
+                        Connected Players: <span id="{{ server_name }}-current-users">{{ server_info.current_users|length }}</span>
                     </div>
                     <div>
                         {% set badge_class = {
@@ -85,7 +145,7 @@
                             'Idle': 'badge-secondary',
                             'Active': 'badge-success'
                         }[server_info.server_status] %}
-                        <span class="badge {{ badge_class }}">Status: {{ server_info.server_status }}</span>
+                        <span class="badge {{ badge_class }}" id="{{ server_name }}-status-badge">Status: {{ server_info.server_status }}</span>
                         
                         
                         <a href="{{ url_for('web_server_server_page', server_name=server_info.server_name) }}"
@@ -99,16 +159,11 @@
     <div class="container">
         <h1>Logs</h1>
 
-        <ul class="list-group">
+        <ul class="list-group" id="logs">
             {% for log in logs %}
                 <li class="list-group-item">{{ log }}</li>
             {% endfor %}
         </ul>
     </div>
-
-    <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
-    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
 </body>
 </html>

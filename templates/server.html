@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ server.server_name }} Details</title>
-    <!-- Bootstrap CSS (replace the link with your local or CDN reference) -->
+
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <link rel="stylesheet" href="styles.css">
-    <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
@@ -53,11 +53,139 @@
                     }
                 });
             }
+
+            function update_server_info (event)
+            {
+                var server_name = $("#server_name").text();
+                var json_data = JSON.parse (event.data);
+                var server_list = Object.values (json_data);
+                var server_info = server_list.find (function (item){
+                    return item.server_name === server_name;
+                });
+              
+                // Update server stats
+                $('#text_restarts').text(server_info.server_restarts);
+                $('#text_gamemode_changes').text(server_info.gamemode_changes);
+                $('#text_gamemode').text(server_info.previous_gamemode);
+                
+                // Update status badge
+                var badge_class = {
+                    'Offline': 'badge-secondary',
+                    'Crashed': 'badge-danger',
+                    'Suspended': 'badge-info',
+                    'Stopping': 'badge-warning',
+                    'Waking': 'badge-info',
+                    'Starting': 'badge-warning',
+                    'Restarting': 'badge-warning',
+                    'Idle': 'badge-secondary',
+                    'Active': 'badge-success'
+                }[server_info.server_status];
+                $('#status_badge').removeClass().addClass('badge ' + badge_class).text('Status: ' + server_info.server_status);
+
+                // Update user counts
+                var user_count = server_info.current_users.length
+                $("#text_user_count").text (user_count);
+
+                if (user_count == 0)
+                {
+                    $("#player_list").hide();
+                    $('#player_list').empty();
+                    $("#no_players").show();
+                }
+                else
+                {
+                    $('#player_list').empty();
+                    for (var i = 0; i < user_count; i++)
+                    {
+                        var element = server_info.current_users[i];
+                        var listItem = $('<li></li>').addClass('list-group-item');
+                        listItem.text(element);
+                        $('#player_list').append(listItem);
+                    }
+                    $("#player_list").show();
+                    $("#no_players").hide();
+                }
+
+                // Update hidden and visible buttons
+
+                if (server_info.server_status == 'Offline' || server_info.server_status == 'Suspended' || server_info.server_status == 'Crashed')
+                {
+                    $("#killServerBtn").hide();
+                    $("#stopServerBtn").hide();
+                    $("#restartServerBtn").hide();
+                    $("#startServerBtn").show();
+                    $("#killServerBtn").prop("disabled", false);
+                    $("#stopServerBtn").prop("disabled", false);
+                }
+                else if (server_info.server_status == 'Waking' || server_info.server_status == 'Starting' || server_info.server_status == 'Restarting' || server_info.server_status == 'Idle' || server_info.server_status == 'Active')
+                {
+                    $("#startServerBtn").hide();
+                    $("#killServerBtn").show();
+                    $("#stopServerBtn").show();
+                    $("#restartServerBtn").show();
+                    $("#killServerBtn").prop("disabled", false);
+                    $("#stopServerBtn").prop("disabled", false);
+                }
+                else if (server_info.server_status == 'Stopping')
+                {
+                    $("#killServerBtn").prop("disabled", true);
+                    $("#stopServerBtn").prop("disabled", true);
+                }
+            }
+
+            var eventSource = new EventSource ('/stream_server_info');
+            eventSource.addEventListener('message', update_server_info);
         });
     </script>
 </head>
 <body>
+    <header>
+		<div class="px-3 py-2 bg-light text-black">
+			<div class="container">
+				<ul class="nav col-12 col-lg-auto my-2 justify-content-center my-md-0 text-small">
+                    <li>
+                        <a href="{{ url_for ('web_server_home')}}" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_dashboard.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Dashboard
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_reports.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Reports
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_logs.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Logs
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_create.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Add Server
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_settings.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Server Settings
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="nav-link text-secondary">
+                            <img src="{{ url_for('static', filename='icon_settings_2.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            Settings
+                        </a>
+                    </li>
+                </ul>
+                
+			</div>
+		</div>
+	</header>
     <p style="display: none" id="server_name">{{ server.server_name }}</p>
+    <p style="display: none" id="stats_status">{{ server.server_status }}</p>
     <div class="container">
         <h1>{{ server.server_name }} Details</h1>
 
@@ -76,7 +204,7 @@
                         'Idle': 'badge-secondary',
                         'Active': 'badge-success'
                     }[server.server_status] %}
-                    <span class="badge {{ badge_class }}" style="float: right">{{ server.server_status }}</span>
+                    <span class="badge {{ badge_class }}" style="float: right" id="status_badge">{{ server.server_status }}</span>
                 {% else %}
                     <div class="alert alert-warning" role="alert">
                         Empty or None
@@ -85,9 +213,9 @@
             </div>
             <div class="card-body">
                 <div id="stats_body_info">
-                    <p>Server Restarts: {{ server.server_restarts }}</p>
-                    <p>Number of Gamemode Changes: {{ server.gamemode_changes }}</p>
-                    <p>Current Gamemode: {{ server.previous_gamemode }}</p>
+                    <p id="text_restarts">Server Restarts: {{ server.server_restarts }}</p>
+                    <p id="text_gamemode_changes">Number of Gamemode Changes: {{ server.gamemode_changes }}</p>
+                    <p id="text_gamemode">Current Gamemode: {{ server.previous_gamemode }}</p>
                 </div>
                 <div id="stats_body_buttons"> 
                     <button type="button" class="btn btn-danger" id="killServerBtn">Kill Server</button>
@@ -103,20 +231,17 @@
                 Connected Users
             </div>
             <div class="card-body">
-                <p class="card-text mb-3">Number of connected users:</p>
+                <p class="card-text mb-3">Number of connected users: <span id="text_user_count">{{ server.current_users|length }}</span></p>
                 <div class="card">
-                    <div class="card-body">
-                        {% if server.current_users %}
-                            <ul class="list-group">
+                    <div class="card-body" id="div_users">
+                            <ul class="list-group" id="player_list" {% if not server.current_users %} style="display: none;" {% endif %}>
                                 {% for user in server.current_users %}
                                     <li class="list-group-item">{{ user }}</li>
                                 {% endfor %}
                             </ul>
-                        {% else %}
-                            <div class="alert alert-warning" role="alert">
+                            <div class="alert alert-warning" id="no_players" role="alert" {% if server.current_users %} style="display: none;" {% endif %}>
                                 Empty or None
                             </div>
-                        {% endif %}
                     </div>
                 </div>
             </div>
