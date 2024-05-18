@@ -50,6 +50,37 @@ def get_logs(line_count=10, start_range=0, server=None):
 def get_lock():
     return app.config['lock']
 
+def get_management_settings (server):
+    path = get_server_config_paths (server)
+    config = MeshServer.read_config (path)
+    config_dict = {}
+    for section in config.sections():
+        config_dict[section] = {}
+        for key, value in config.items (section):
+            config_dict[section][key] = value
+    return config_dict
+
+def get_server_config_paths (server):
+    action = 'get_server_config'
+    server = server
+    data = f"{server}:{action}"
+    server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        client_socket.connect(server_socket)
+        client_socket.send(data.encode ('utf-8'))
+
+        response = b""
+        while True:
+            part = client_socket.recv(1024)
+            if not part:
+                break
+            response += part
+        
+    # Decode the response and convert it to a Python dictionary
+    response_data = json.loads(response.decode('utf-8'))
+    
+    return response_data
+
 @app.route('/update_server_info', methods=['POST'])
 def update_server_info():
     if not request.data:
@@ -89,7 +120,6 @@ def update_server_info():
     except Exception as e:
             print(f"Error updating server info: {e}, {data}")
             return 'Error updating server info', 500
-
 
 @app.route('/stream_server_info')
 def stream_server_info():
@@ -162,6 +192,10 @@ def control_server ():
         client_socket.send(data.encode ('utf-8'))
 
     return "", 204
+
+@app.route('/server/<server_name>/request_management_settings', methods=['POST'])
+def request_management_settings(server_name):
+    return jsonify(get_management_settings(server_name))
     
 def read_global_config ():
     if os.path.exists ("config.ini"):    

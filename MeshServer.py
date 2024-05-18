@@ -132,7 +132,7 @@
                 - bAdminsAlwaysJoin [True]
                 - bDevsAlwaysJoin [True]
                 - bTeamDamageEnabled [False]
-                - TeamDamageReflection
+                - TeamDamageReflection [0]
                 - GameplayConfig=()[Everything after this is all one line, separated by commas]
                     - bOverrideDefaults [False]
                     - RecoilMultiplier []
@@ -183,26 +183,13 @@ class Server:
     def __init__(self, name, config, server_info):
         self.name = name
         self.server_info = server_info
-
-        self.log_file_path = config['General']['log_file_path']
-        self.saved_file_path = config['General']['saved_file_path']
-        self.max_reloads = int(config['General']['max_reloads'])
-        self.server_executable = config['General']['server_executable']
-        self.restricted_gamemode = config['General']['restricted_gamemode']
-        self.server_args = config['General']['server_args']
-        self.monitor_only = ast.literal_eval(config['General']['monitor_only'])
-        if (config['General']['active_hours'] == ''):
-            self.active_hours = False
-        else:
-            timeSplit = config['General']['active_hours'].split("-")
-            self.active_hours = True
-            self.start_time = datetime.strptime (timeSplit[0], '%H:%M').time()
-            self.end_time = datetime.strptime (timeSplit[1], '%H:%M').time()
+        self.config_path = config
+        self.config = self.read_server_config ()
+        self.update_config_settings ()
 
         self.server_process = None
         self.log = None
         self.analysis_thread = None
-        self.config = config
         self.server_started = False
 
         self.current_line = 0
@@ -213,10 +200,32 @@ class Server:
         self.manual_shutdown_flag = False
 
         self.lock = threading.Lock()
+        self.init_server()
 
     def init_server (self):
         self.start_server()
         self.start_log_analysis()
+    
+    def read_server_config (self):
+        config = read_config (self.config_path)
+
+        return config
+    
+    def update_config_settings (self):
+        self.log_file_path = self.config['General']['log_file_path']
+        self.saved_file_path = self.config['General']['saved_file_path']
+        self.max_reloads = int(self.config['General']['max_reloads'])
+        self.server_executable = self.config['General']['server_executable']
+        self.restricted_gamemode = self.config['General']['restricted_gamemode']
+        self.server_args = self.config['General']['server_args']
+        self.monitor_only = ast.literal_eval(self.config['General']['monitor_only'])
+        if (self.config['General']['active_hours'] == ''):
+            self.active_hours = False
+        else:
+            timeSplit = self.config['General']['active_hours'].split("-")
+            self.active_hours = True
+            self.start_time = datetime.strptime (timeSplit[0], '%H:%M').time()
+            self.end_time = datetime.strptime (timeSplit[1], '%H:%M').time()
 
     def start_log_analysis (self):
         thread = threading.Thread (target=self.analyze_log, daemon=True)
@@ -348,8 +357,9 @@ class Server:
         path = self.saved_file_path
         config = self.config
         global_motd = read_global_config()['MOTD']['global_server_motd']
-        motd = config['MOTD']['motd']
-        join_motd = config ['MOTD']['join_motd']
+        print (self.config)
+        motd = self.config['MOTD']['motd']
+        join_motd = self.config ['MOTD']['join_motd']
         crash_motd = ast.literal_eval (config ['MOTD']['crash_motd'])
         
         with open(f"{path}/Messages.ini", 'w') as message_file:
@@ -655,7 +665,6 @@ def send_server_info ():
     global server_info
     global web_server_address
     
-    print ("Attempting to update")
     # Check web server status, return if offline, not found or not used.
     if not check_web_server():
         print ("Failed to ping web server")
@@ -682,7 +691,6 @@ def send_server_info ():
     try:
         json_string = {"server_info": json_data}
         response = requests.post(url, json=json_string)
-        print (response)
     except requests.exceptions.ConnectionError as e:
         if check_web_server():
             register_web_server_error (f"Unknown Web Server Error. {e}")
@@ -698,29 +706,12 @@ def send_server_info ():
             register_web_server_error (f"Web server either crashed or lost connection. Attempting to reconnect.")
             return
 
-def output_server_info():
-    global servers
-
-    for server in servers:
-        server_info = server.server_info
-        print(f"{server.name}")
-        print(f"\tStatus: {server_info.server_status}")
-        print(f"\tConnected Users: {server_info.current_users}")
-        print(f"\tNumber of Users: {len(server_info.joined_users) - len(server_info.disconnected_users)}")
-        print(f"\tTotal User Joins: {server_info.total_user_joins}")
-        print(f"\tTotal User Disconnects: {server_info.total_user_disconnects}")
-        print(f"\tCurrent Gamemode: {server_info.previous_gamemode}")
-        print(f"\tGamemode Changes: {server_info.gamemode_changes}")
-        print(f"\tServer Restarts: {server_info.server_restarts}")
-        print()
-
 def begin_server (config, name):
-    global server_info
+    global server_info, servers
     server_instance_info = ServerInfo (name)
     server_instance = Server(name, config, server_instance_info)
     servers.append (server_instance)
     server_info.append (server_instance_info)
-    server_instance.init_server()
 
 def log_is_new_gamemode(line):
     match = re.search(r'Map vote has concluded, travelling to (.+)', line)
@@ -809,6 +800,8 @@ def check_reports (saved_file_path, server):
 """
 
 def get_server_from_name (name):
+    global servers
+
     for server in servers:
         if (server.name == name):
             return server
@@ -924,6 +917,7 @@ def get_server_configs():
     # Find all server folders
     server_folders = [folder for folder in os.listdir() if os.path.isdir(folder) and folder.startswith("Server_")]
 
+    '''
     for folder in server_folders:
         config_file_path = os.path.join(folder, 'config.ini')
         if os.path.exists(config_file_path):
@@ -933,6 +927,10 @@ def get_server_configs():
             generate_config (config_file_path)
             config = read_config(config_file_path)
             configs.append({'folder': folder, 'config': config})
+    '''
+    for folder in server_folders:
+        config_file_path = os.path.join(folder, 'config.ini')
+        configs.append({'folder': folder, 'config': config_file_path})
 
     return configs
     
@@ -1017,6 +1015,24 @@ def async_output_server_info():
         #os.system('cls' if os.name == 'nt' else 'clear')  # Clear console
         output_server_info()
 
+def output_server_info():
+    global servers
+
+    print (get_server_from_name ('Server_DevServer'))
+
+    for server in servers:
+        server_info = server.server_info
+        print(f"{server.name}")
+        print(f"\tStatus: {server_info.server_status}")
+        print(f"\tConnected Users: {server_info.current_users}")
+        print(f"\tNumber of Users: {len(server_info.joined_users) - len(server_info.disconnected_users)}")
+        print(f"\tTotal User Joins: {server_info.total_user_joins}")
+        print(f"\tTotal User Disconnects: {server_info.total_user_disconnects}")
+        print(f"\tCurrent Gamemode: {server_info.previous_gamemode}")
+        print(f"\tGamemode Changes: {server_info.gamemode_changes}")
+        print(f"\tServer Restarts: {server_info.server_restarts}")
+        print()
+
 def init_sockets ():
     server_socket = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind (('127.0.0.1', int (read_global_config()['WebServer']['web_server_port']) + 1))
@@ -1030,21 +1046,30 @@ def listen_for_clients(server_socket):
         threading.Thread (target=handle_client, args=(client_socket, client_address)).start()
         time.sleep (3)
         
-
 def handle_client (client_socket, client_address):
-    data = client_socket.recv(1024).decode ('utf-8').split (':')
-    data_server = data[0]
-    data_action = data[1]
+    try:
+        data = client_socket.recv(1024).decode ('utf-8').split (':')
+        data_server = data[0]
+        data_action = data[1]
 
-    if data_action == "start":
-        execute_server_start (data_server)
-    elif data_action == "restart":
-        execute_server_restart (data_server)
-    elif data_action == "stop":
-        execute_server_stop (data_server)
-    elif data_action == "kill":
-        execute_server_kill (data_server)
-    client_socket.close()
+        if data_action == "start":
+            execute_server_start (data_server)
+        elif data_action == "restart":
+            execute_server_restart (data_server)
+        elif data_action == "stop":
+            execute_server_stop (data_server)
+        elif data_action == "kill":
+            execute_server_kill (data_server)
+        elif data_action == "get_server_config":
+            server = get_server_from_name (data_server)
+            config = server.config_path
+            response = json.dumps (config)
+            client_socket.sendall (response.encode('utf-8'))
+    except Exception as e:
+        print (f"Error handling client {client_address}: {e}")
+    finally:
+        client_socket.close()
+
 
 def main():
     configs = get_server_configs()
