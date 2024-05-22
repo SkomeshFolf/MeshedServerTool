@@ -60,6 +60,73 @@ def get_management_settings (server):
             config_dict[section][key] = value
     return config_dict
 
+def get_players_settings (server):
+    path = get_server_config_paths (server)
+    config = MeshServer.read_config (path)
+    saved_path = config['General']['saved_path_dont_touch']
+    admin_list = []
+    owner_list = []
+    whitelist_list = []
+
+    with open (saved_path + '/AdminIDs.ini', 'r') as file:
+        for line in file:
+            admin_list.append (line.strip())
+    
+    with open (saved_path + '/OwnerIDs.ini', 'r') as file:
+        for line in file:
+            owner_list.append (line.strip())
+    
+    with open (saved_path + '/WhitelistIDs.ini', 'r') as file:
+        for line in file:
+            whitelist_list.append (line.strip())
+
+    
+    players_dict = {
+        'admins': admin_list,
+        'owners': owner_list,
+        'whitelist': whitelist_list
+    }
+
+    return players_dict
+
+def get_server_settings (server):
+    path = get_server_config_paths (server)
+    config = MeshServer.read_config (path)
+    saved_path = config['General']['saved_path_dont_touch']
+    server_config = saved_path + '/Config/ServerConfig.ini'
+    config = configparser.ConfigParser()
+    config.read (server_config)
+    config_dict = {}
+
+    for option in config['/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C']:
+        if option == 'GameplayConfig':
+            continue
+
+        config_dict[option] = config['/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C'][option]
+
+    return config_dict
+
+def get_gameplay_settings (server):
+    path = get_server_config_paths (server)
+    config = MeshServer.read_config (path)
+
+    saved_path = config['General']['saved_path_dont_touch']
+    server_config = saved_path + '/Config/ServerConfig.ini'
+
+    config = configparser.ConfigParser()
+    config.read (server_config)
+
+    gameplay_settings_raw = config['/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C']['GameplayConfig']
+    gameplay_settings = gameplay_settings_raw.replace('(', '').replace(')', '').split(',')
+
+    settings_dict = {}
+
+    for setting in gameplay_settings:
+        key, value = setting.split('=')
+        settings_dict[key] = value
+
+    return settings_dict
+
 def get_server_config_paths (server):
     action = 'get_server_config'
     server = server
@@ -196,7 +263,37 @@ def control_server ():
 @app.route('/server/<server_name>/request_management_settings', methods=['POST'])
 def request_management_settings(server_name):
     return jsonify(get_management_settings(server_name))
+
+@app.route('/server/<server_name>/request_players_settings', methods=['POST'])
+def request_players_settings(server_name):
+    return jsonify(get_players_settings(server_name))
+
+@app.route('/server/<server_name>/request_server_settings', methods=['POST'])
+def request_server_settings(server_name):
+    return jsonify(get_server_settings(server_name))
+
+@app.route('/server/<server_name>/request_gameplay_settings', methods=['POST'])
+def request_gameplay_settings(server_name):
+    print ("Gettings")
+    return jsonify(get_gameplay_settings(server_name))
     
+@app.route('/server/<server_name>/submit_management_settings', methods=['POST'])
+def submit_management_settings ():
+    return NotImplementedError
+
+@app.route('/server/<server_name>/submit_players_settings', methods=['POST'])
+def submit_players_settings ():
+    return NotImplementedError
+
+@app.route('/server/<server_name>/submit_server_settings', methods=['POST'])
+def submit_server_settings ():
+    return NotImplementedError
+
+@app.route('/server/<server_name>/submit_gameplay_settings', methods=['POST'])
+def submit_gameplay_settings ():
+    return NotImplementedError
+
+
 def read_global_config ():
     if os.path.exists ("config.ini"):    
         config = configparser.ConfigParser()

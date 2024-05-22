@@ -65,7 +65,6 @@
                                     The executable should be in /Pandemic/Binaries/Linux OR WindowsServer/PandemicServer.exe
         - server_args:          Any arguments to be passed to the server, such as -port and -queryport. Each argument separated by commas
                                     ex. M_WaveSurvival,-port=7777,-queryport=27015
-        - monitor_only:         Should the script manage the server by starting and stopping the server, or just monitor logs?
         - active_hours:         What time should the server be active for? In format HH:MM-HH:MM (ex 08:00-18:00)
         [MOTD]
             - motd:          What should be the server's MOTD be. Each message should separated by a /
@@ -171,6 +170,7 @@ import threading
 import requests
 import json
 import os
+import platform
 import configparser
 import psutil
 import ast
@@ -179,13 +179,17 @@ import time
 import shutil
 import socket
 
+class OSErrorDetectionError (Exception):
+    def __init__ (self, message="Unable to detect the current OS"):
+        self.message = message
+        super().__init__(self.message)
+
 class Server:
     def __init__(self, name, config, server_info):
         self.name = name
         self.server_info = server_info
         self.config_path = config
-        self.config = self.read_server_config ()
-        self.update_config_settings ()
+        self.read_server_config ()
 
         self.server_process = None
         self.log = None
@@ -203,22 +207,29 @@ class Server:
         self.init_server()
 
     def init_server (self):
+        if not self.check_if_valid_install_dir():
+            self.wait_for_valid_install_dir()
         self.start_server()
         self.start_log_analysis()
     
     def read_server_config (self):
-        config = read_config (self.config_path)
-
-        return config
+        self.config = read_config (self.config_path)
+        self.update_config_settings()
     
     def update_config_settings (self):
-        self.log_file_path = self.config['General']['log_file_path']
-        self.saved_file_path = self.config['General']['saved_file_path']
+        self.server_name = self.config['General']['server_name']
+        self.install_dir = self.config['General']['install_dir']
         self.max_reloads = int(self.config['General']['max_reloads'])
-        self.server_executable = self.config['General']['server_executable']
+        self.starting_gamemode = self.config['General']['starting_gamemode']
         self.restricted_gamemode = self.config['General']['restricted_gamemode']
+        self.port = int(self.config['General']['port'])
+        self.query_port = int(self.config['General']['queryport'])
         self.server_args = self.config['General']['server_args']
-        self.monitor_only = ast.literal_eval(self.config['General']['monitor_only'])
+
+        self.update_file_paths()
+
+        self.update_config_saved_path ()
+
         if (self.config['General']['active_hours'] == ''):
             self.active_hours = False
         else:
@@ -226,6 +237,46 @@ class Server:
             self.active_hours = True
             self.start_time = datetime.strptime (timeSplit[0], '%H:%M').time()
             self.end_time = datetime.strptime (timeSplit[1], '%H:%M').time()
+        
+    def update_file_paths (self):
+        os_name = platform.system()
+        if os_name == "Windows":
+            self.log_file_path = self.install_dir + '/WindowsServer/Pandemic/Saved/Logs/Pandemic.log'
+            self.saved_file_path = self.install_dir + '/WindowsServer/Pandemic/Saved'
+            self.server_executable = self.install_dir + '/WindowsServer/PandemicServer.exe'
+        elif os_name =="Linux":
+            self.log_file_path = self.install_dir + '/LinuxServer/Pandemic/Saved/Logs/Pandemic.log'
+            self.saved_file_path = self.install_dir + '/LinuxServer/Pandemic/Saved'
+            self.server_executable = self.install_dir + '/LinuxServer/Pandemic/Binaries/Linux/PandemicServer'
+        else:
+            raise OSErrorDetectionError
+    
+    def update_config_saved_path (self):
+        config = configparser.ConfigParser()
+        config.read (self.config_path)
+        config.set ('General', 'saved_path_dont_touch', self.saved_file_path)
+        with open (self.config_path, 'w') as configfile:
+            config.write (configfile)
+
+    def check_if_valid_install_dir (self):
+        if os.path.exists (self.install_dir):
+            if os.path.exists (self.install_dir + "/WindowsServer") or os.path.exists (self.install_dir + "/LinuxServer"):
+                return True
+            else:
+                return False
+        else:
+            return False
+    
+    def wait_for_valid_install_dir (self):
+        path_valid = False
+
+        while not path_valid:
+            print (f"{self.server_name} could not find server at {self.install_dir}. Please update config with the server\'s root. Will retry in 10 seconds.")
+            
+            self.read_server_config()
+            path_valid = self.check_if_valid_install_dir()
+
+            time.sleep (10)
 
     def start_log_analysis (self):
         thread = threading.Thread (target=self.analyze_log, daemon=True)
@@ -234,14 +285,22 @@ class Server:
     def start_server (self):
         self.server_info.server_status_change (2)
         register_server_start (self.name)
+        self.update_config_settings()
         self.init_motd ()
         self.reset_vars()
         self.launch_server()
         
     def launch_server (self):
         if not self.server_process:
+            essential_server_args = [
+                self.starting_gamemode,
+                '-log',
+                f"-port={self.port}",
+                f"-queryport={self.query_port}",
+                f"-SteamServerName={self.server_name}"
+            ]
             server_args_raw = self.server_args
-            server_args = server_args_raw.split(',')
+            server_args = essential_server_args + server_args_raw.split(',')
             command = [self.server_executable] + server_args
             self.server_process = subprocess.Popen(command)
             self.server_info.server_restarts = self.server_info.server_restarts + 1
@@ -310,7 +369,7 @@ class Server:
         register_server_suspend (self.name)
 
         while True:
-            if is_active_hours (self.start_time, self.end_time):
+            if self.is_active_hours (self.start_time, self.end_time):
                 break
 
             time.sleep (60)
@@ -333,13 +392,12 @@ class Server:
         self.server_info.server_status_change (4)
         register_server_idle (self.name)
 
-    def server_crashed (self, monitor_only):
+    def server_crashed (self):
         print ("Server crashed")
         self.last_crash = datetime.now().time()
         self.server_info.server_status_change (-2)
         time.sleep (3)
-        if not monitor_only:
-            self.restart_server ("Server crash")
+        self.restart_server ("Server crash")
 
     def reset_vars(self):
         self.log = None
@@ -412,7 +470,7 @@ class Server:
 
                     # Check if the server has crashed
                     if self.server_process.poll() != None:
-                        self.server_crashed(self.monitor_only)
+                        self.server_crashed()
                         server_active = False
                         break
 
@@ -458,15 +516,14 @@ class Server:
                                     self.active_server ()
 
                                 # Check if server should restart for either max gamemode changes or loading the wrong gamemode.
-                                if not self.monitor_only:
-                                    if self.server_info.gamemode_changes > self.max_reloads:
-                                        self.restart_server(f"Server reloaded {self.server_info.gamemode_changes} times")
-                                        server_active = False
-                                        break
-                                    elif self.restricted_gamemode != '' and self.server_info.previous_gamemode != self.restricted_gamemode:
-                                        self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
-                                        server_active = False
-                                        break
+                                if self.server_info.gamemode_changes > self.max_reloads:
+                                    self.restart_server(f"Server reloaded {self.server_info.gamemode_changes} times")
+                                    server_active = False
+                                    break
+                                elif self.restricted_gamemode != '' and self.server_info.previous_gamemode != self.restricted_gamemode:
+                                    self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
+                                    server_active = False
+                                    break
 
                             # Is the latest log a player joining? Log it in the server info.
                             player_id = log_is_player_joined(line)
@@ -908,6 +965,9 @@ def save_log_file():
         log_file.write("")    
 
 def read_config(config_file_path):
+    if not os.path.isfile (config_file_path):
+        generate_config (config_file_path)
+
     config = configparser.ConfigParser()
     config.read(config_file_path)    
     return config
@@ -934,47 +994,19 @@ def get_server_configs():
 
     return configs
     
-def write_to_log (server, content):
-    current_datetime = datetime.now()
-    formatted_datetime = current_datetime.strftime("%Y-%m-%d %H.%M.%S")
-    with open("log.txt", 'a') as log_file:
-        log_file.write(f"\n[{formatted_datetime}] {server} - {content}")
-
-def create_log_file():
-    current_datetime = datetime.now()
-    formatted_datetime = current_datetime.strftime("%Y-%m-%d %H.%M.%S")
-    if not os.path.exists("log.txt"):
-        with open('log.txt', 'w') as log_file:
-            log_file.write(f"[Start of log file: {formatted_datetime}]\n")
-    else:
-        save_log_file()
-        with open('log.txt', 'w') as log_file:
-            log_file.write(f"[Start of log file: {formatted_datetime}]\n")
-    
-def save_log_file():
-    if not os.path.exists("Logs"):
-        os.makedirs("Logs")
-    
-    current_datetime = datetime.now()
-    formatted_datetime = current_datetime.strftime("%Y-%m-%d %H.%M.%S")
-    
-    shutil.move("log.txt", f"Logs/log_{formatted_datetime}.txt")
-    
-    with open('log.txt', 'w') as log_file:
-        log_file.write("")
-    
-
 def generate_config(config_file_path):
     newConfig = configparser.ConfigParser()
     newConfig['General'] = {
-        'log_file_path': '../Pandemic/Saved/Logs/Pandemic.log',
-        'saved_file_path': '../Pandemic/Saved',
+        'server_name': 'New 5k Server',
+        'install_dir': '../Pandemic/Saved/Logs/Pandemic.log',
+        'saved_path_dont_touch': '',
         'max_reloads': '7',
+        'starting_gamemode': '',
         'restricted_gamemode': '',
-        'server_executable': '',
+        'port': '7777',
+        'queryport': '27015',
         'server_args': '',
-        'monitor_only': False,
-        'active_hours': '',
+        'active_hours': ''
     }
     newConfig['MOTD'] = {
         'motd': '',
