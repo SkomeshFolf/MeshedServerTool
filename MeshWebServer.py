@@ -148,6 +148,28 @@ def get_server_config_paths (server):
     
     return response_data
 
+def apply_management_settings (server):
+
+    return NotImplementedError
+
+def apply_players_settings (server):
+    return NotImplementedError
+
+def apply_server_settings (server):
+    return NotImplementedError
+
+def apply_gameplay_settings (server):
+    path = get_server_config_paths (server)
+    config = MeshServer.read_config (path)
+
+    saved_path = config['General']['saved_path_dont_touch']
+    server_config = saved_path + '/Config/ServerConfig.ini'
+
+    config = configparser.ConfigParser()
+    config.read (server_config)
+    
+    return NotImplementedError
+
 @app.route('/update_server_info', methods=['POST'])
 def update_server_info():
     if not request.data:
@@ -274,24 +296,23 @@ def request_server_settings(server_name):
 
 @app.route('/server/<server_name>/request_gameplay_settings', methods=['POST'])
 def request_gameplay_settings(server_name):
-    print ("Gettings")
     return jsonify(get_gameplay_settings(server_name))
     
 @app.route('/server/<server_name>/submit_management_settings', methods=['POST'])
-def submit_management_settings ():
-    return NotImplementedError
+def submit_management_settings (server_name):
+    return apply_management_settings (server_name)
 
 @app.route('/server/<server_name>/submit_players_settings', methods=['POST'])
-def submit_players_settings ():
-    return NotImplementedError
+def submit_players_settings (server_name):
+    return apply_players_settings (server_name)
 
 @app.route('/server/<server_name>/submit_server_settings', methods=['POST'])
-def submit_server_settings ():
-    return NotImplementedError
+def submit_server_settings (server_name):
+    return apply_server_settings (server_name)
 
 @app.route('/server/<server_name>/submit_gameplay_settings', methods=['POST'])
-def submit_gameplay_settings ():
-    return NotImplementedError
+def submit_gameplay_settings (server_name):
+    return apply_gameplay_settings (server_name)
 
 
 def read_global_config ():
