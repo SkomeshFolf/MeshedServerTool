@@ -148,27 +148,122 @@ def get_server_config_paths (server):
     
     return response_data
 
-def apply_management_settings (server):
+def apply_management_settings (server, settings):
+    try:
+        path = get_server_config_paths (server)
+        config = MeshServer.read_config (path)
 
-    return NotImplementedError
+        for key, value in settings.items():
+            config.set ('General', key, str(value))
 
-def apply_players_settings (server):
-    return NotImplementedError
+        with open(path, 'w') as configfile:
+            config.write(configfile)
 
-def apply_server_settings (server):
-    return NotImplementedError
+        return jsonify ({'status' : 'success'}), 200
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
 
-def apply_gameplay_settings (server):
-    path = get_server_config_paths (server)
-    config = MeshServer.read_config (path)
+def apply_players_settings (server, settings):
+    try:
+        path = get_server_config_paths (server)
+        config = MeshServer.read_config (path)
 
-    saved_path = config['General']['saved_path_dont_touch']
-    server_config = saved_path + '/Config/ServerConfig.ini'
+        saved_path = config['General']['saved_path_dont_touch']
 
-    config = configparser.ConfigParser()
-    config.read (server_config)
-    
-    return NotImplementedError
+        admins = settings.get ('admins', [])
+        owners = settings.get ('owners', [])
+        whitelist = settings.get ('whitelist', [])
+
+        with open (saved_path + '/AdminIDs.ini', 'w') as file:
+            for player in admins:
+                file.write (player + '\n')
+
+        with open (saved_path + '/OwnerIDs.ini', 'w') as file:
+            for player in owners:
+                file.write (player + '\n')
+
+        with open (saved_path + '/WhitelistIDs.ini', 'w') as file:
+            for player in whitelist:
+                file.write (player + '\n')
+
+        return jsonify ({'status' : 'success'}), 200
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+
+def apply_server_settings (server, settings):
+    try:
+        path = get_server_config_paths (server)
+        config = MeshServer.read_config (path)
+
+        saved_path = config['General']['saved_path_dont_touch']
+        server_config = saved_path + '/Config/ServerConfig.ini'
+
+        data = settings
+        print (data)
+
+        config = configparser.ConfigParser()
+        config.read (server_config)
+
+        for key, value in data.items():
+            config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', key, str(value))
+        
+        with open(server_config, 'w') as configfile:
+            config.write(configfile)
+        
+        return jsonify ({"status" : "success"}), 200
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+
+def apply_gameplay_settings (server, settings):
+    try:
+        path = get_server_config_paths (server)
+        config = MeshServer.read_config (path)
+
+        saved_path = config['General']['saved_path_dont_touch']
+        server_config = saved_path + '/Config/ServerConfig.ini'
+
+        print (settings)
+
+        config = configparser.ConfigParser()
+        config.read (server_config)
+
+        gameplay_config_str = config.get ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig')
+
+        gameplay_config = parse_gameplay_config (gameplay_config_str)
+
+        for key, value in settings.items():
+            gameplay_config[key] = value
+
+        new_gameplay_config = format_gameplay_config (gameplay_config)
+
+        config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig', new_gameplay_config)
+
+        with open(server_config, 'w') as configfile:
+            config.write(configfile)
+        
+        return jsonify ({"status" : "success"}), 200
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+
+def parse_gameplay_config(config_str):
+    config_str = config_str.strip('()')
+    config_dict = {}
+    for item in config_str.split(','):
+        key, value = item.split('=')
+        if value.lower() == 'true':
+            value = True
+        elif value.lower() == 'false':
+            value = False
+        elif '.' in value:
+            value = float(value)
+        else:
+            value = int(value)
+        config_dict[key] = value
+    return config_dict
+
+def format_gameplay_config (config_dict):
+    config_str = ','.join([f'{key}={str(value) if isinstance(value, bool) else value}' for key, value in config_dict.items()])
+    return f'({config_str})'
 
 @app.route('/update_server_info', methods=['POST'])
 def update_server_info():
@@ -300,19 +395,35 @@ def request_gameplay_settings(server_name):
     
 @app.route('/server/<server_name>/submit_management_settings', methods=['POST'])
 def submit_management_settings (server_name):
-    return apply_management_settings (server_name)
+    try:
+        result = apply_management_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/server/<server_name>/submit_players_settings', methods=['POST'])
 def submit_players_settings (server_name):
-    return apply_players_settings (server_name)
+    try:
+        result = apply_players_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/server/<server_name>/submit_server_settings', methods=['POST'])
 def submit_server_settings (server_name):
-    return apply_server_settings (server_name)
+    try:
+        result = apply_server_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/server/<server_name>/submit_gameplay_settings', methods=['POST'])
 def submit_gameplay_settings (server_name):
-    return apply_gameplay_settings (server_name)
+    try:
+        result = apply_gameplay_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 def read_global_config ():

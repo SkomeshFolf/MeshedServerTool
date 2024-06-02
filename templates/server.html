@@ -29,7 +29,7 @@
                     url: '/control_server',
                     data: { action: action, server: $("#server_name").text() },
                     success: function(response) {
-                        console.log(response);
+                        
                         // Handle the response as needed
                     },
                     error: function(error) {
@@ -196,6 +196,10 @@
             function initSettingForms ()
             {
                 initSettingsManagement();
+                initManagementFormSubmitButton();
+                initPlayersFormSubmitButton();
+                initServerFormSubmitButton();
+                initGameplayFormSubmitButton();
             }
             function initSettingsManagement ()
             {
@@ -204,7 +208,7 @@
                     url: '/server/' + $("#server_name").text() + '/request_management_settings',
                     dataType: 'json',
                     success: function (response) {
-                        console.log (response);
+                        
                         loadSettingsManagement (response);
                         
                     },
@@ -235,7 +239,7 @@
                     url: '/server/' + $("#server_name").text() + '/request_players_settings',
                     dataType: 'json',
                     success: function (response) {
-                        console.log (response);
+                        
                         loadSettingsPlayers (response);
                     },
                     error: function (xhr, status, error) {
@@ -262,7 +266,7 @@
                     url: '/server/' + $("#server_name").text() + '/request_server_settings',
                     dataType: 'json',
                     success: function (response) {
-                        console.log (response);
+                        
                         loadSettingsServer (response);
                     },
                     error: function (xhr, status, error) {
@@ -315,7 +319,7 @@
                     url: '/server/' + $("#server_name").text() + '/request_gameplay_settings',
                     dataType: 'json',
                     success: function (response) {
-                        console.log (response);
+                        
                         loadSettingsGameplay (response);
                     },
                     error: function (xhr, status, error) {
@@ -354,10 +358,31 @@
                     event.preventDefault();
 
                     var serverName = $("#server_name").text();
-                    var actionURL = '/server/' + serverName + '/request_management_settings';
+                    var actionURL = '/server/' + serverName + '/submit_management_settings';
 
                     $(this).attr('action', actionURL);
-                    this.submit();
+
+                    var formData = $(this).serialize();
+                    var keyValuePairs = formData.split ('&');
+                    var jsonObject = {};
+
+                    keyValuePairs.forEach(function (pair) {
+                        var keyValue = pair.split ('=');
+                        jsonObject [keyValue[0]] = decodeURIComponent (keyValue[1]);
+                    });
+
+                    $.ajax ({
+                        url: actionURL,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(jsonObject),
+                        success: function (response) {
+
+                        },
+                        error: function (xhr, status, error) {
+                            console.log (error);
+                        }
+                    });
                 });
             }
             function initPlayersFormSubmitButton ()
@@ -366,10 +391,41 @@
                     event.preventDefault();
 
                     var serverName = $("#server_name").text();
-                    var actionURL = '/server/' + serverName + '/request_management_settings';
+                    var actionURL = '/server/' + serverName + '/submit_players_settings';
 
                     $(this).attr('action', actionURL);
-                    this.submit();
+
+                    var formData = $(this).serialize();
+                    var keyValuePairs = formData.split ('&');
+                    var jsonObject = {};
+
+                    keyValuePairs.forEach(function(pair) {
+                        var keyValue = pair.split('=');
+                        var key = keyValue[0];
+                        var value = decodeURIComponent(keyValue[1]);
+                        
+                        // Split value by newline characters into an array
+                        if (value.includes('\r\n')) {
+                            jsonObject[key] = value.split('\r\n');
+                        } else {
+                            jsonObject[key] = [value]; // Make sure it's always an array
+                        }
+                    });
+
+                    console.log (jsonObject);
+
+                    $.ajax ({
+                        url: actionURL,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(jsonObject),
+                        success: function (response) {
+
+                        },
+                        error: function (xhr, status, error) {
+                            console.log (error);
+                        }
+                    });
                 });
             }
             function initServerFormSubmitButton ()
@@ -378,10 +434,35 @@
                     event.preventDefault();
 
                     var serverName = $("#server_name").text();
-                    var actionURL = '/server/' + serverName + '/request_management_settings';
+                    var actionURL = '/server/' + serverName + '/submit_server_settings';
 
                     $(this).attr('action', actionURL);
-                    this.submit();
+
+                    var formData = $(this).serialize();
+                    var keyValuePairs = formData.split ('&');
+                    var jsonObject = {};
+
+                    keyValuePairs.forEach(function (pair) {
+                        var keyValue = pair.split ('=');
+                        jsonObject [keyValue[0]] = decodeURIComponent (keyValue[1]);
+                    });
+
+                    jsonObject.bUseServerPassword = $("#server_setup_game_server_bUseServerPassword").is (":checked");
+
+                    console.log (jsonObject);
+
+                    $.ajax ({
+                        url: actionURL,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(jsonObject),
+                        success: function (response) {
+
+                        },
+                        error: function (xhr, status, error) {
+                            console.log (error);
+                        }
+                    });
                 });
             }
             function initGameplayFormSubmitButton ()
@@ -390,10 +471,34 @@
                     event.preventDefault();
 
                     var serverName = $("#server_name").text();
-                    var actionURL = '/server/' + serverName + '/request_management_settings';
+                    var actionURL = '/server/' + serverName + '/submit_gameplay_settings';
 
                     $(this).attr('action', actionURL);
-                    this.submit();
+
+                    var formData = $(this).serialize();
+                    var keyValuePairs = formData.split('&');
+                    var jsonObject = {};
+
+                    // Iterate over each key-value pair
+                    keyValuePairs.forEach(function(pair) {
+                        var keyValue = pair.split('=');
+                        jsonObject[keyValue[0]] = keyValue[1];
+                    });
+
+                    jsonObject.bOverrideDefaults = $("#server_setup_gameplay_bOverrideDefaults").is(":checked");
+
+                    $.ajax ({
+                        url: actionURL,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(jsonObject),
+                        success: function (response) {
+
+                        },
+                        error: function (xhr, status, error) {
+                            console.log (error);
+                        }
+                    });
                 });
             }
         });
@@ -527,7 +632,7 @@
                                         <label for="server_setup_management_serverName" class="col-form-label">Server Name</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_management_serverName" name="serverName">
+                                        <input type="text" class="form-control" id="server_setup_management_serverName" name="server_name">
                                     </div>
                                 </div>
 
@@ -536,7 +641,7 @@
                                         <label for="server_setup_management_installDir" class="col-form-label">Server Installation Directory</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_management_installDir" name="installDir">
+                                        <input type="text" class="form-control" id="server_setup_management_installDir" name="install_dir">
                                     </div>
                                 </div>
 
@@ -545,7 +650,7 @@
                                         <label for="server_setup_management_startingGamemode" class="col-form-label">Starting Gamemode</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_management_startingGamemode" name="startingGamemode">
+                                        <select class="form-select" id="server_setup_management_startingGamemode" name="starting_gamemode">
                                             <option value="Area12_PersistentLevel">Area 12 - Chapter 1</option>
                                             <option value="M_Area12_Part2">Area 12 - Chapter 2</option>
                                             <option value="M_Area12_Part3">Area 12 - Chapter 3</option>
@@ -563,7 +668,7 @@
                                         <label for="server_setup_management_maxReloads" class="col-form-label">Max Reloads Before Restart</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_management_maxReloads" name="maxReloads" placeholder="7">
+                                        <input type="text" class="form-control" id="server_setup_management_maxReloads" name="max_reloads" placeholder="7">
                                     </div>
                                 </div>
 
@@ -572,7 +677,7 @@
                                         <label for="server_setup_management_restrictedGamemode" class="col-form-label">Only Play This Gamemode</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_management_restrictedGamemode" name="restrictedGamemode">
+                                        <select class="form-select" id="server_setup_management_restrictedGamemode" name="restricted_gamemode">
                                             <option value="">No Restriction</option>
                                             <!-- <option value="Area12_PersistentLevel">Area 12 Campaign</option> -->
                                             <option value="M_Antarctica">Antarctica</option>
@@ -589,7 +694,7 @@
                                         <label for="server_setup_management_port" class="col-form-label">Server Port</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_management_port" name="serverPort" placeholder="7777">
+                                        <input type="text" class="form-control" id="server_setup_management_port" name="port" placeholder="7777">
                                     </div>
                                 </div>
 
@@ -598,13 +703,19 @@
                                         <label for="server_setup_management_queryPort" class="col-form-label">Steam Query Port</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_management_queryPort" name="queryPort" placeholder="27015">
+                                        <input type="text" class="form-control" id="server_setup_management_queryPort" name="queryport" placeholder="27015">
                                     </div>
                                 </div>
 
                                 <div class="mb-1 form-floating">
-                                    <textarea class="form-control" placeholder="Additional Launch Args" id="server_setup_management_args" name="additionalLaunchArgs" rows="4"></textarea>
+                                    <textarea class="form-control" placeholder="Additional Launch Args" id="server_setup_management_args" name="server_args" rows="4"></textarea>
                                     <label for="server_setup_management_args" class="floatingTextArea">Additional Launch Arguments (One per line, leave blank unless you know what you're doing)</label>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-success">Save Changes</button>
+                                    </div>
                                 </div>
                             </form>                                
                         </div>
@@ -629,6 +740,12 @@
                                     <textarea class="form-control" placeholder="Steam User ID" id="server_setup_players_whitelist" name="whitelist" rows="4"></textarea>
                                     <label for="server_setup_players_whitelist" class="floatingTextArea">Whitelist, one per line</label>
                                 </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-success">Save Changes</button>
+                                    </div>
+                                </div>
                             </form>                            
                         </div>
                     </div>
@@ -642,12 +759,13 @@
                             <form id="server_setup_game_server_form" class="p-4 bg-light">
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
-                                        <label for="server_setup_game_server_servername" class="col-form-label">Server Name</label>
+                                        <label for="server_setup_game_server_ServerName" class="col-form-label">Server Name</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_game_server_servername" name="servername">
+                                        <input type="text" class="form-control" id="server_setup_game_server_ServerName" name="ServerName" placeholder="Default to the other server name">
                                     </div>
                                 </div>
+
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
                                         <label for="server_setup_game_server_ZombieSpawnAmount" class="col-form-label">Zombie Spawn Amount</label>
@@ -727,15 +845,6 @@
                                 
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
-                                        <label for="server_setup_game_server_ServerName" class="col-form-label">Server Name</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_game_server_ServerName" name="ServerName" placeholder="Default to the other server name">
-                                    </div>
-                                </div>
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
                                         <label for="server_setup_game_server_MaxPlayerCount" class="col-form-label">Max Player Count</label>
                                     </div>
                                     <div class="col-md-4">
@@ -748,7 +857,7 @@
                                         <label for="server_setup_game_server_bRestartServerEachGame" class="col-form-label">Restart Server Each Game</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bRestartServerEachGame" name="RestartServerEachGame">
+                                        <select class="form-select" id="server_setup_game_server_bRestartServerEachGame" name="bRestartServerEachGame">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -760,7 +869,7 @@
                                         <label for="server_setup_game_server_bUseSeamlessTravel" class="col-form-label">Use Seamless Travel</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bUseSeamlessTravel" name="UseSeamlessTravel">
+                                        <select class="form-select" id="server_setup_game_server_bUseSeamlessTravel" name="bUseSeamlessTravel">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -772,7 +881,7 @@
                                         <label for="server_setup_game_server_bAnyoneUseAdminCam" class="col-form-label">Anyone Use Admin Cam</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bAnyoneUseADminCam" name="AnyoneUseAdminCam">
+                                        <select class="form-select" id="server_setup_game_server_bAnyoneUseAdminCam" name="bAnyoneUseAdminCam">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -783,7 +892,7 @@
                                     <div class="col-md-4 input-group">
                                         <span class="input-group-text">Server Password</span>
                                         <div class="input-group-text">
-                                            <input class="form-check-input mt-0" id="server_setup_game_server_bUseServerPassword" name="UseServerPassword" type="checkbox">
+                                            <input class="form-check-input mt-0" id="server_setup_game_server_bUseServerPassword" name="bUseServerPassword" type="checkbox">
                                         </div>
                                         <input type="text" class="form-control" id="server_setup_game_server_ServerPassword" name="ServerPassword">
                                     </div>
@@ -822,7 +931,7 @@
                                         <label for="server_setup_game_server_bDenyVACBan" class="col-form-label">Deny VAC Ban</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bDenyVACBan" name="DenyVACBan">
+                                        <select class="form-select" id="server_setup_game_server_bDenyVACBan" name="bDenyVACBan">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -834,7 +943,7 @@
                                         <label for="server_setup_game_server_bDenyGameBan" class="col-form-label">Deny Game Ban</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bDenyGameBan" name="DenyGameBan">
+                                        <select class="form-select" id="server_setup_game_server_bDenyGameBan" name="bDenyGameBan">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -846,7 +955,7 @@
                                         <label for="server_setup_game_server_bDenyCommunityBan" class="col-form-label">Deny Community Ban</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bDenyCommunityBan" name="DenyCommunityBan">
+                                        <select class="form-select" id="server_setup_game_server_bDenyCommunityBan" name="bDenyCommunityBan">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -858,7 +967,7 @@
                                         <label for="server_setup_game_server_bUseWhitelist" class="col-form-label">Use Whitelist</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bUseWhitelist" name="UseWhitelist">
+                                        <select class="form-select" id="server_setup_game_server_bUseWhitelist" name="bUseWhitelist">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -870,7 +979,7 @@
                                         <label for="server_setup_game_server_bFriendsOnly" class="col-form-label">Friends Only</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bFriendsOnly" name="FriendsOnly">
+                                        <select class="form-select" id="server_setup_game_server_bFriendsOnly" name="bFriendsOnly">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -882,7 +991,7 @@
                                         <label for="server_setup_game_server_bUseLAN" class="col-form-label">Use LAN</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bUseLAN" name="UseLAN">
+                                        <select class="form-select" id="server_setup_game_server_bUseLAN" name="bUseLAN">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -913,7 +1022,7 @@
                                         <label for="server_setup_game_server_bShouldAdvertise" class="col-form-label">Should Advertise</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bShouldAdvertise" name="ShouldAdvertise">
+                                        <select class="form-select" id="server_setup_game_server_bShouldAdvertise" name="bShouldAdvertise">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -925,7 +1034,7 @@
                                         <label for="server_setup_game_server_bAdminsAlwaysJoin" class="col-form-label">Admins Always Join</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bAdminsAlwaysJoin" name="AdminsAlwaysJoin">
+                                        <select class="form-select" id="server_setup_game_server_bAdminsAlwaysJoin" name="bAdminsAlwaysJoin">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -937,7 +1046,7 @@
                                         <label for="server_setup_game_server_bDevsAlwaysJoin" class="col-form-label">Devs Always Join</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bDevsAlwaysJoin" name="DevsAlwaysJoin">
+                                        <select class="form-select" id="server_setup_game_server_bDevsAlwaysJoin" name="bDevsAlwaysJoin">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -949,7 +1058,7 @@
                                         <label for="server_setup_game_server_bTeamDamageEnabled" class="col-form-label">Team Damage Enabled</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bTeamDamageEnabled" name="TeamDamageEnabled">
+                                        <select class="form-select" id="server_setup_game_server_bTeamDamageEnabled" name="bTeamDamageEnabled">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -963,7 +1072,12 @@
                                     <div class="col-md-4">
                                         <input type="text" class="form-control" id="server_setup_game_server_TeamDamageReflection" name="TeamDamageReflection" placeholder="0">
                                     </div>
-                                </div>                                
+                                </div>       
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-success">Save Changes</button>
+                                    </div>
+                                </div>                       
                             </form>
                         </div>
                     </div>
@@ -980,7 +1094,7 @@
                                         <label for="server_setup_gameplay_bOverrideDefaults" class="col-form-label">Enable Overrides</label>
                                     </div>
                                     <div class="col-auto">
-                                        <input type="checkbox" class="form-check-input" id="server_setup_gameplay_bOverrideDefaults" name="EnableOverrides">
+                                        <input type="checkbox" class="form-check-input" id="server_setup_gameplay_bOverrideDefaults" name="bOverrideDefaults">
                                     </div>
                                 </div>
                                 
@@ -1007,7 +1121,7 @@
                                         <label for="server_setup_gameplay_bCanSprint" class="col-form-label">Can Sprint</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_gameplay_bCanSprint" name="CanSprint">
+                                        <select class="form-select" id="server_setup_gameplay_bCanSprint" name="bCanSprint">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -1064,7 +1178,7 @@
                                         <label for="server_setup_gameplay_bForceFreeAimMultiplier" class="col-form-label">Force Free Aim Multiplier</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_gameplay_bForceFreeAimMultiplier" name="ForceFreeAimMultiplier">
+                                        <select class="form-select" id="server_setup_gameplay_bForceFreeAimMultiplier" name="bForceFreeAimMultiplier">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -1094,7 +1208,7 @@
                                         <label for="server_setup_gameplay_bForceCanReloadWhileAiming" class="col-form-label">Force Can Reload While Aiming</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_gameplay_bForceCanReloadWhileAiming" name="ForceCanReloadWhileAiming">
+                                        <select class="form-select" id="server_setup_gameplay_bForceCanReloadWhileAiming" name="bForceCanReloadWhileAiming">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -1106,7 +1220,7 @@
                                         <label for="server_setup_gameplay_bForceNoReloadWhileSprinting" class="col-form-label">Force No Reload While Sprinting</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_gameplay_bForceNoReloadWhileSprinting" name="ForceNoReloadWhileSprinting">
+                                        <select class="form-select" id="server_setup_gameplay_bForceNoReloadWhileSprinting" name="bForceNoReloadWhileSprinting">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
@@ -1157,7 +1271,7 @@
                                         <label for="server_setup_gameplay_bCanBracedAim" class="col-form-label">Can Braced Aim</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_gameplay_bCanBracedAim" name="CanBracedAim">
+                                        <select class="form-select" id="server_setup_gameplay_bCanBracedAim" name="bCanBracedAim">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
                                         </select>
@@ -1169,10 +1283,15 @@
                                         <label for="server_setup_gameplay_bUseHeightOverBore" class="col-form-label">Use Height Over Bore</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_gameplay_bUseHeightOverBore" name="UseHeightOverBore">
+                                        <select class="form-select" id="server_setup_gameplay_bUseHeightOverBore" name="bUseHeightOverBore">
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
+                                    </div>
+                                </div>
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-success">Save Changes</button>
                                     </div>
                                 </div>
                             </form>
