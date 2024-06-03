@@ -5,6 +5,7 @@ from json.decoder import JSONDecodeError
 import os
 import configparser
 import threading
+import traceback
 import socket
 import requests
 import re
@@ -58,6 +59,8 @@ def get_management_settings (server):
         config_dict[section] = {}
         for key, value in config.items (section):
             config_dict[section][key] = value
+
+    print (config_dict)
     return config_dict
 
 def get_players_settings (server):
@@ -93,7 +96,7 @@ def get_server_settings (server):
     path = get_server_config_paths (server)
     config = MeshServer.read_config (path)
     saved_path = config['General']['saved_path_dont_touch']
-    server_config = saved_path + '/Config/ServerConfig.ini'
+    server_config = saved_path + f'/Config/{server}.ini'
     config = configparser.ConfigParser()
     config.read (server_config)
     config_dict = {}
@@ -111,7 +114,7 @@ def get_gameplay_settings (server):
     config = MeshServer.read_config (path)
 
     saved_path = config['General']['saved_path_dont_touch']
-    server_config = saved_path + '/Config/ServerConfig.ini'
+    server_config = saved_path + f'/Config/{server}.ini'
 
     config = configparser.ConfigParser()
     config.read (server_config)
@@ -196,7 +199,7 @@ def apply_server_settings (server, settings):
         config = MeshServer.read_config (path)
 
         saved_path = config['General']['saved_path_dont_touch']
-        server_config = saved_path + '/Config/ServerConfig.ini'
+        server_config = saved_path + f'/Config/{server}.ini'
 
         data = settings
         print (data)
@@ -315,7 +318,10 @@ def stream_server_info():
                     server_name: {
                         'server_name': server.server_name,
                         'current_users': server.current_users,
-                        'server_status': server.server_status
+                        'server_status': server.server_status,
+                        'current_gamemode' : server.previous_gamemode,
+                        'gamemode_changes': server.gamemode_changes,
+                        'server_restarts' : server.server_restarts
                     }
                     for server_name, server in server_info.items()
                 }
@@ -336,12 +342,12 @@ def stream_all_server_logs():
                 time.sleep (2)
     return Response(generate(), mimetype='text/event-stream')
 
-@app.route('/stream_server_logs')
-def stream_server_logs():
+@app.route('/server/<server_name>/stream_server_logs')
+def stream_server_logs(server_name):
     def generate():
         with app.app_context():
             while True:
-                logs = get_logs()
+                logs = get_logs(server=server_name)
                 yield f"data: {json.dumps(logs)}\n\n"
 
                 time.sleep (2)
@@ -362,14 +368,18 @@ def web_server_server_page(server_name):
         # Use the first matching server (assuming server names are unique)
         return render_template('server.html', server=matching_servers[0])
     else:
-        print("Server not found")
-        return "Server not found", 404
+        return render_template ('404_server.html')
+
+@app.route ('/create_server')
+def web_server_create_server_page ():
+    return render_template ('create_server.html')
 
 @app.route ('/control_server', methods=['POST'])
 def control_server ():
     action = request.form.get("action")
     server = request.form.get("server")
     data = f"{server}:{action}"
+    print ("Doing action: " + data)
     server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect(server_socket)
@@ -425,6 +435,44 @@ def submit_gameplay_settings (server_name):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route ('/submit_new_server', methods=['POST'])
+def submit_new_server():
+    settings = request.get_json()
+
+    server_name = settings.get ('server_name')
+
+    try:
+        os.makedirs (f"Server_{server_name}")
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
+    
+    MeshServer.generate_config (f"{os.getcwd()}/Server_{server_name}/config.ini")
+
+    try:
+        config = configparser.ConfigParser()
+        config.read (f"Server_{server_name}/config.ini")
+
+        for key, value in settings.items():
+            if config.has_option ('General', key):
+                config.set ('General', key, str(value))
+
+        with open(f"Server_{server_name}/config.ini", 'w') as configfile:
+            config.write(configfile)
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
+    
+    try:
+        action = "initialize"
+        server = server_name
+        port = read_global_config()['WebServer']['web_server_port']
+
+        response = requests.post (f"http://127.0.0.1:5000/control_server", data={"action": action, "server": server})
+
+        #print (get_server_config_paths (server))
+
+        return jsonify ({'status' : 'success'}), 200
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
 
 def read_global_config ():
     if os.path.exists ("config.ini"):    

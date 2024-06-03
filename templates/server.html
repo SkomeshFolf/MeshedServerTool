@@ -1,16 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ server.server_name }} Details</title>
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-
-    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+    {% include 'head.html' %}
     <script>
         $(document).ready(function() {
             
@@ -19,6 +11,7 @@
             initButtonClickListeners();
             initEventListening();
             initSettingForms();
+            initLogStreams ();
             disableAllGameplaySettings (true)
             $("#server_setup_game_server_ServerPassword").prop("disabled", true);
 
@@ -29,10 +22,11 @@
                     url: '/control_server',
                     data: { action: action, server: $("#server_name").text() },
                     success: function(response) {
-                        
+                        createAlertToast ("Success", "Sending " + action + " action to server.");
                         // Handle the response as needed
                     },
                     error: function(error) {
+                        createAlertToast ("Error", "Failed sending " + action + " action to server. " + error);
                         console.error('Error:', error);
                     }
                 });
@@ -45,7 +39,7 @@
                 var server_info = server_list.find (function (item){
                     return item.server_name === server_name;
                 });
-              
+
                 // Update server stats
                 updateServerStats(server_info);
                 
@@ -106,7 +100,8 @@
             {
                 $('#text_restarts').text(server_info.server_restarts);
                 $('#text_gamemode_changes').text(server_info.gamemode_changes);
-                $('#text_gamemode').text(server_info.previous_gamemode);
+                $('#text_gamemode').text(server_info.current_gamemode);
+                $("#server_name").text (decodeURIComponent (server_info.server_name));
             }
             function updateStatusBadge (server_info)
             {
@@ -195,6 +190,8 @@
             }
             function initSettingForms ()
             {
+                $("#server_setup_accordion").hide();
+                $("#server_setup_loading_spinner").show();
                 initSettingsManagement();
                 initManagementFormSubmitButton();
                 initPlayersFormSubmitButton();
@@ -351,6 +348,12 @@
                 $("#server_setup_gameplay_bForceCanReloadWhileAiming").val(obj.bForceCanReloadWhileAiming);
                 $("#server_setup_gameplay_bForceNoReloadWhileSprinting").val(obj.bForceNoReloadWhileSprinting);
                 $("#server_setup_gameplay_bUseHeightOverBore").val(obj.bUseHeightOverBore);
+                finishLoadingSettings();
+            }
+            function finishLoadingSettings()
+            {
+                $("#server_setup_accordion").show();
+                $("#server_setup_loading_spinner").hide();
             }
             function initManagementFormSubmitButton ()
             {
@@ -377,10 +380,11 @@
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
-
+                            createRestartServerToast ("Success", "You must restart your server for changes to apply");
                         },
                         error: function (xhr, status, error) {
-                            console.log (error);
+                            createRestartServerToast ("Error", "Error applying changes: " + error);
+                            console.error (error);
                         }
                     });
                 });
@@ -420,10 +424,11 @@
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
-
+                            createRestartServerToast ("Success", "You must restart your server for changes to apply");
                         },
                         error: function (xhr, status, error) {
-                            console.log (error);
+                            createRestartServerToast ("Error", "Error applying changes: " + error);
+                            console.error (error);
                         }
                     });
                 });
@@ -457,10 +462,11 @@
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
-
+                            createRestartServerToast ("Success", "You must restart your server for changes to apply");
                         },
                         error: function (xhr, status, error) {
-                            console.log (error);
+                            createRestartServerToast ("Error", "Error applying changes: " + error);
+                            console.error (error);
                         }
                     });
                 });
@@ -493,63 +499,96 @@
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
-
+                            createRestartServerToast ("Success", "You must restart your server for changes to apply");
                         },
                         error: function (xhr, status, error) {
-                            console.log (error);
+                            createRestartServerToast ("Error", "Error applying changes: " + error);
+                            console.error (error);
                         }
                     });
                 });
+            }
+            function createAlertToast (title, body)
+            {
+                var toastHTML = `
+                    <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <strong class="me-auto">${title}</strong>
+                        <small class="text-muted">just now</small>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${body}
+                    </div>
+                    </div>
+                `;
+                var $toast = $(toastHTML);
+                $('#toast-container').append($toast);
+
+                var toast = new bootstrap.Toast($toast[0], {
+                    autohide: true,
+                    delay: 5000
+                });
+
+                toast.show();
+            }
+            function createRestartServerToast (title, body)
+            {
+                var toastHTML = `
+                    <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <strong class="me-auto">${title}</strong>
+                        <small class="text-muted">just now</small>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${body}
+                        <div class="mt-2 pt-2 border-top">
+                            <button type="button" class="btn-warning btn-sm restart-btn" data-bs-dismiss="toast" aria-label="Close">Restart Server Now</button>
+                        </div>
+                    </div>
+                    </div>
+                `;
+                var $toast = $(toastHTML);
+                $('#toast-container').append($toast);
+
+                var toast = new bootstrap.Toast($toast[0], {
+                    autohide: true,
+                    delay: 10000
+                });
+
+                toast.show();
+
+                $toast.find ('.restart-btn').on('click', function () {
+                    sendServerControlRequest ('restart');
+                });
+            }
+            function initLogStreams()
+            {
+                var logEventSource = new EventSource ('/server/' + $("#server_name").text() + '/stream_server_logs');
+                logEventSource.addEventListener('message', update_logs);
+            }
+            function update_logs (event)
+            {
+                var logs = JSON.parse (event.data);
+                
+                $('#logs').empty();
+                for (var i = 0; i < logs.length; i++)
+                {
+                    var element = logs[i];
+                    var listItem = $('<li></li>').addClass('list-group-item');
+                    listItem.text(element);
+                    $('#logs').append(listItem);
+                }
             }
         });
     </script>
 </head>
 <body>
-    <header>
-		<div class="px-3 py-2 bg-light text-black">
-			<div class="container">
-				<ul class="nav col-12 col-lg-auto my-2 justify-content-center my-md-0 text-small">
-                    <li>
-                        <a href="{{ url_for ('web_server_home')}}" class="nav-link text-secondary">
-                            <img src="{{ url_for('static', filename='icon_dashboard.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
-                            Dashboard
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#" class="nav-link text-secondary">
-                            <img src="{{ url_for('static', filename='icon_reports.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
-                            Reports
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#" class="nav-link text-secondary">
-                            <img src="{{ url_for('static', filename='icon_logs.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
-                            Logs
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#" class="nav-link text-secondary">
-                            <img src="{{ url_for('static', filename='icon_create.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
-                            Add Server
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#" class="nav-link text-secondary">
-                            <img src="{{ url_for('static', filename='icon_settings.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
-                            Server Settings
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#" class="nav-link text-secondary">
-                            <img src="{{ url_for('static', filename='icon_settings_2.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
-                            Settings
-                        </a>
-                    </li>
-                </ul>
-                
-			</div>
-		</div>
-	</header>
+    {% include 'header.html' %}
+
+    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 11"></div>
+
     <p style="display: none" id="server_name">{{ server.server_name }}</p>
     <p style="display: none" id="stats_status">{{ server.server_status }}</p>
     <div class="container">
@@ -579,9 +618,9 @@
             </div>
             <div class="card-body">
                 <div id="stats_body_info">
-                    <p id="text_restarts">Server Restarts: {{ server.server_restarts }}</p>
-                    <p id="text_gamemode_changes">Number of Gamemode Changes: {{ server.gamemode_changes }}</p>
-                    <p id="text_gamemode">Current Gamemode: {{ server.previous_gamemode }}</p>
+                    <p>Server Restarts: <span id="text_restarts"> {{ server.server_restarts }}</span></p>
+                    <p>Number of Gamemode Changes: <span id="text_gamemode_changes"> {{ server.gamemode_changes }} </span></p>
+                    <p>Current Gamemode: <span id="text_gamemode">{{ server.previous_gamemode }}</span></p>
                 </div>
                 <div id="stats_body_buttons"> 
                     <button type="button" class="btn btn-danger" id="killServerBtn">Kill Server</button>
@@ -618,6 +657,11 @@
                 Server Settings
             </div>
             <div class="card-body"></div>
+                <div class="container d-flex justify-content-center align-items-center">
+                    <div class="spinner-border text-secondary" id="server_setup_loading_spinner" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
                 <div class="accordion" id="server_setup_accordion">
                     <div class="accordion-item" id="server_setup_management_accordion">
                         <h2 class="accordion-header" id="server_setup_management_accordion_header">
@@ -759,7 +803,7 @@
                             <form id="server_setup_game_server_form" class="p-4 bg-light">
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
-                                        <label for="server_setup_game_server_ServerName" class="col-form-label">Server Name</label>
+                                        <label for="server_setup_game_server_ServerName" class="col-form-label">Server Display Name</label>
                                     </div>
                                     <div class="col-md-4">
                                         <input type="text" class="form-control" id="server_setup_game_server_ServerName" name="ServerName" placeholder="Default to the other server name">
@@ -1301,25 +1345,15 @@
             </div>
         </div>
 
-        <!--
-        <div class="card">
-            <div class="card-header">
-                Console View
-            </div>
-            <div class="card-body console-log">
-                <pre>{{ server.console }}</pre>
-            </div>
-        </div>
-
         <div class="card">
             <div class="card-header">
                 Log View
             </div>
-            <div class="card-body log-entries">
-                <pre>{{ server.log }}</pre>
+            <div class="card-body">
+                <ul class="list-group" id="logs"></ul>
             </div>
         </div>
-        -->
+        
     </div>
 </body>
 </html>

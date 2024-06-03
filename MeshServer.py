@@ -180,7 +180,7 @@ import shutil
 import socket
 
 class OSErrorDetectionError (Exception):
-    def __init__ (self, message="Unable to detect the current OS"):
+    def __init__ (self, message="Either unable to detect the current OS or current OS is not supported."):
         self.message = message
         super().__init__(self.message)
 
@@ -204,11 +204,11 @@ class Server:
         self.manual_shutdown_flag = False
 
         self.lock = threading.Lock()
-        self.init_server()
 
     def init_server (self):
         if not self.check_if_valid_install_dir():
             self.wait_for_valid_install_dir()
+
         self.start_server()
         self.start_log_analysis()
     
@@ -237,15 +237,21 @@ class Server:
             self.active_hours = True
             self.start_time = datetime.strptime (timeSplit[0], '%H:%M').time()
             self.end_time = datetime.strptime (timeSplit[1], '%H:%M').time()
+
+    def update_server_path_name (self, new_name):
+        self.name = new_name
+        self.server_info.server_name = new_name
+        self.config_path = f"Server_{new_name}/config.ini"
+        self.read_server_config ()
         
     def update_file_paths (self):
-        os_name = platform.system()
+        os_name = platform.system ()
         if os_name == "Windows":
-            self.log_file_path = self.install_dir + '/WindowsServer/Pandemic/Saved/Logs/Pandemic.log'
+            self.log_file_path = self.install_dir + f'/WindowsServer/Pandemic/Saved/Logs/{self.server_name}/{self.server_name}.log'
             self.saved_file_path = self.install_dir + '/WindowsServer/Pandemic/Saved'
             self.server_executable = self.install_dir + '/WindowsServer/PandemicServer.exe'
-        elif os_name =="Linux":
-            self.log_file_path = self.install_dir + '/LinuxServer/Pandemic/Saved/Logs/Pandemic.log'
+        elif os_name == "Linux":
+            self.log_file_path = self.install_dir + f'/LinuxServer/Pandemic/Saved/Logs/{self.server_name}/{self.server_name}.log'
             self.saved_file_path = self.install_dir + '/LinuxServer/Pandemic/Saved'
             self.server_executable = self.install_dir + '/LinuxServer/Pandemic/Binaries/Linux/PandemicServer'
         else:
@@ -285,7 +291,8 @@ class Server:
     def start_server (self):
         self.server_info.server_status_change (2)
         register_server_start (self.name)
-        self.update_config_settings()
+        self.read_server_config()
+        update_server_path_name (self.name) 
         self.init_motd ()
         self.reset_vars()
         self.launch_server()
@@ -297,7 +304,9 @@ class Server:
                 '-log',
                 f"-port={self.port}",
                 f"-queryport={self.query_port}",
-                f"-SteamServerName={self.server_name}"
+                f"-SteamServerName={self.server_name}",
+                f"-Log={self.server_name}/{self.server_name}.log",
+                f"-ConfigFileName={self.server_name}.ini"
             ]
             server_args_raw = self.server_args
             server_args = essential_server_args + server_args_raw.split(',')
@@ -308,10 +317,9 @@ class Server:
     def execute_server_start (self):
         self.manual_kill_flag = False
         self.manual_shutdown_flag = False
-        self.init_server()
 
     def execute_server_restart (self):
-        self.restart_server (self)
+        self.restart_server ("Manual Restart")
 
     def execute_server_stop (self):
         self.manual_shutdown_flag = True
@@ -409,13 +417,13 @@ class Server:
         self.server_info.total_user_disconnects = 0
         self.server_info.gamemode_changes = 0
         self.current_line = 0
+        self.server_started = False
         self.last_crash = None
 
     def init_motd (self):
         path = self.saved_file_path
         config = self.config
         global_motd = read_global_config()['MOTD']['global_server_motd']
-        print (self.config)
         motd = self.config['MOTD']['motd']
         join_motd = self.config ['MOTD']['join_motd']
         crash_motd = ast.literal_eval (config ['MOTD']['crash_motd'])
@@ -469,10 +477,13 @@ class Server:
                 while server_active and not self.manual_kill_flag:
 
                     # Check if the server has crashed
-                    if self.server_process.poll() != None:
+                    if self.server_process != None:
+                        if self.server_process.poll() != None:
+                            self.server_crashed()
+                            server_active = False
+                            break
+                    else:
                         self.server_crashed()
-                        server_active = False
-                        break
 
                     # Has the server been idle for 30 minutes? Should the server restart anyways?
                     '''
@@ -639,7 +650,6 @@ class UserReport:
         self.reason = reason
         self.text = text
 
-
 servers = []
 server_info = []
 main_log_file = None
@@ -763,12 +773,39 @@ def send_server_info ():
             register_web_server_error (f"Web server either crashed or lost connection. Attempting to reconnect.")
             return
 
-def begin_server (config, name):
+def begin_server (name):
     global server_info, servers
-    server_instance_info = ServerInfo (name)
-    server_instance = Server(name, config, server_instance_info)
+    server_info_instance = ServerInfo (name)
+    server_instance = Server(name, name + "/config.ini", server_info_instance)
     servers.append (server_instance)
-    server_info.append (server_instance_info)
+    server_info.append (server_info_instance)
+    server_instance.init_server()
+
+def update_server_path_name (server):
+    global server_info, servers
+
+    server_instance = get_server_from_name (server)
+    server_instance.read_server_config()
+    
+    server_new_name = server_instance.server_name
+    
+    if server is not server_new_name:
+        server_instance.server_info.server_name = server_new_name
+
+        old_path = f"{server}"
+        new_path = f"Server_{server_new_name}"
+
+        try:
+            os.rename (old_path, new_path)
+        except Exception as e:
+            print ("")
+
+        try:
+            os.rename ("Server_" + old_path, new_path)
+        except Exception as e:
+            print ("")
+
+        server_instance.update_server_path_name (server_new_name)
 
 def log_is_new_gamemode(line):
     match = re.search(r'Map vote has concluded, travelling to (.+)', line)
@@ -972,22 +1009,11 @@ def read_config(config_file_path):
     config.read(config_file_path)    
     return config
 
-def get_server_configs():
+def get_all_server_paths():
     configs = []
     # Find all server folders
     server_folders = [folder for folder in os.listdir() if os.path.isdir(folder) and folder.startswith("Server_")]
 
-    '''
-    for folder in server_folders:
-        config_file_path = os.path.join(folder, 'config.ini')
-        if os.path.exists(config_file_path):
-            config = read_config(config_file_path)
-            configs.append({'folder': folder, 'config': config})
-        else:
-            generate_config (config_file_path)
-            config = read_config(config_file_path)
-            configs.append({'folder': folder, 'config': config})
-    '''
     for folder in server_folders:
         config_file_path = os.path.join(folder, 'config.ini')
         configs.append({'folder': folder, 'config': config_file_path})
@@ -996,9 +1022,10 @@ def get_server_configs():
     
 def generate_config(config_file_path):
     newConfig = configparser.ConfigParser()
+    server_dir_name = config_file_path.replace ("Server_", "").replace ("/config.ini", "")
     newConfig['General'] = {
-        'server_name': 'New 5k Server',
-        'install_dir': '../Pandemic/Saved/Logs/Pandemic.log',
+        'server_name': server_dir_name,
+        'install_dir': 'SCP Pandemic Dedicated Server',
         'saved_path_dont_touch': '',
         'max_reloads': '7',
         'starting_gamemode': '',
@@ -1016,6 +1043,9 @@ def generate_config(config_file_path):
 
     with open(config_file_path, 'w') as config_file:
         newConfig.write(config_file)
+
+    print ("Creating config at " + config_file_path)
+    print (server_dir_name)
         
 def read_global_config ():
     if not os.path.exists ("config.ini"):
@@ -1041,6 +1071,7 @@ def generate_global_config ():
     with open ("config.ini", 'w') as config_file:
         new_config.write (config_file)
 
+
 def async_output_server_info():
     while True:
         time.sleep(10)  
@@ -1049,8 +1080,6 @@ def async_output_server_info():
 
 def output_server_info():
     global servers
-
-    print (get_server_from_name ('Server_DevServer'))
 
     for server in servers:
         server_info = server.server_info
@@ -1064,6 +1093,7 @@ def output_server_info():
         print(f"\tGamemode Changes: {server_info.gamemode_changes}")
         print(f"\tServer Restarts: {server_info.server_restarts}")
         print()
+
 
 def init_sockets ():
     server_socket = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
@@ -1097,6 +1127,9 @@ def handle_client (client_socket, client_address):
             config = server.config_path
             response = json.dumps (config)
             client_socket.sendall (response.encode('utf-8'))
+        elif data_action == "initialize":
+            print ("Initializing " + data_server)
+            begin_server ("Server_" + data_server)
     except Exception as e:
         print (f"Error handling client {client_address}: {e}")
     finally:
@@ -1104,14 +1137,13 @@ def handle_client (client_socket, client_address):
 
 
 def main():
-    configs = get_server_configs()
+    configs = get_all_server_paths()
     
     create_log_file()
 
     for config in configs:
         name = config['folder']
-        config = config['config']
-        begin_server (config, name)
+        begin_server (name)
     
     global_config = read_global_config()
     

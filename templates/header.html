@@ -1,0 +1,45 @@
+<header>
+    <div class="px-3 py-2 bg-light text-black">
+        <div class="container">
+            <ul class="nav col-12 col-lg-auto my-2 justify-content-center my-md-0 text-small">
+                <li>
+                    <a href="{{ url_for ('web_server_home')}}" class="nav-link text-secondary">
+                        <img src="{{ url_for('static', filename='icon_dashboard.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                        Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a href="#" class="nav-link text-secondary">
+                        <img src="{{ url_for('static', filename='icon_reports.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                        Reports
+                    </a>
+                </li>
+                <li>
+                    <a href="#" class="nav-link text-secondary">
+                        <img src="{{ url_for('static', filename='icon_logs.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                        Logs
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for ('web_server_create_server_page')}}" class="nav-link text-secondary"> 
+                        <img src="{{ url_for('static', filename='icon_create.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                        Add Server
+                    </a>
+                </li>
+                <li>
+                    <a href="#" class="nav-link text-secondary">
+                        <img src="{{ url_for('static', filename='icon_settings.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                        Server Settings
+                    </a>
+                </li>
+                <li>
+                    <a href="#" class="nav-link text-secondary">
+                        <img src="{{ url_for('static', filename='icon_settings_2.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                        Settings
+                    </a>
+                </li>
+            </ul>
+            
+        </div>
+    </div>
+</header>
