@@ -189,7 +189,6 @@ class Server:
         self.name = name
         self.server_info = server_info
         self.config_path = config
-        self.read_server_config ()
 
         self.server_process = None
         self.log = None
@@ -205,7 +204,17 @@ class Server:
 
         self.lock = threading.Lock()
 
+    def create_server (self, shared_dir=False):
+        self.server_info.server_status_change (-5)
+        register_server_creating (self.name)
+        self.update_config_settings()
+        self.launch_server_dry (shared_dir)
+        time.sleep (3)
+        self.kill_server ()
+
     def init_server (self):
+        self.read_server_config ()
+
         if not self.check_if_valid_install_dir():
             self.wait_for_valid_install_dir()
 
@@ -219,6 +228,7 @@ class Server:
     def update_config_settings (self):
         self.server_name = self.config['General']['server_name']
         self.install_dir = self.config['General']['install_dir']
+        self.shared_dir = self.config['General']['shared_install_dir']
         self.max_reloads = int(self.config['General']['max_reloads'])
         self.starting_gamemode = self.config['General']['starting_gamemode']
         self.restricted_gamemode = self.config['General']['restricted_gamemode']
@@ -304,15 +314,28 @@ class Server:
                 '-log',
                 f"-port={self.port}",
                 f"-queryport={self.query_port}",
-                f"-SteamServerName={self.server_name}",
-                f"-Log={self.server_name}/{self.server_name}.log",
-                f"-ConfigFileName={self.server_name}.ini"
+                f"-SteamServerName={self.server_name}"
             ]
+            if self.shared_dir:
+                essential_server_args.append (f"-Log={self.server_name}/{self.server_name}.log")
+                essential_server_args.append (f"-ConfigFileName={self.server_name}.ini")
+
             server_args_raw = self.server_args
             server_args = essential_server_args + server_args_raw.split(',')
             command = [self.server_executable] + server_args
             self.server_process = subprocess.Popen(command)
             self.server_info.server_restarts = self.server_info.server_restarts + 1
+
+    def launch_server_dry (self, shared_dir):
+        server_args_raw = []
+        if shared_dir:
+            server_args_raw = [
+                f"-Log={self.server_name}/{self.server_name}.log",
+                f"-ConfigFileName={self.server_name}.ini"
+            ]
+        server_args = server_args_raw.split(',')
+        command = [self.server_executable] + server_args
+        self.server_process = subprocess.Popen(server_args)
 
     def execute_server_start (self):
         self.manual_kill_flag = False
@@ -614,6 +637,7 @@ class ServerInfo:
 
     def server_status_change (self, new_status):
         status_dict = {
+            -5: 'Creating',
             -3: 'Offline',
             -2: 'Crashed',
             -1: 'Suspended',
@@ -712,6 +736,16 @@ def register_server_idle (server):
     write_to_log (server, "Server is now idle.")
     send_server_info ()
 
+def register_server_creating (server):
+    print (f"Server {server} is being created for the first time.")
+    write_to_log (server, "Server is being created for the first time.")
+    send_server_info()
+
+def register_server_created (server):
+    print (f"Server {server} has successfully been created.")
+    write_to_log (server, "Server has been successfully created.")
+    send_server_info()
+
 def register_web_server_error (e):
     print (f"Web Server Error: {e}")
     write_to_log ("Web Server", f"Web Server Error: {e}")
@@ -780,6 +814,91 @@ def begin_server (name):
     servers.append (server_instance)
     server_info.append (server_info_instance)
     server_instance.init_server()
+
+def create_server (formdata):
+    global server_info, servers
+
+    server_name = formdata.get ('server_name')
+    server_name_dir = "Server_" + server_name
+
+    try:
+        os.makedirs (f"Server_{server_name}")
+    except Exception as e:
+        return e
+
+    generate_config (f"Server_{server_name}/config.ini")
+
+    try:
+        config = configparser.ConfigParser()
+        config.read (f"Server_{server_name}/config.ini")
+
+        for key, value in formdata.items():
+            if config.has_option ('General', key):
+                config.set ('General', key, str(value))
+
+        with open(f"Server_{server_name}/config.ini", 'w') as configfile:
+            config.write(configfile)
+    except Exception as e:
+        return e
+
+    server_info_instance = ServerInfo (server_name_dir)
+    server_instance = Server(server_name_dir, server_name_dir + "/config.ini", server_info_instance)
+    servers.append (server_instance)
+    server_info.append (server_info_instance)
+    server_instance.create_server(formdata.get('shared_install_dir'))
+
+    try:
+        config = read_config (server_name_dir + "/config.ini")
+
+        saved_path = config['General']['saved_path_dont_touch']
+        server_config = saved_path + f'/Config/{server_name}.ini'
+
+        data = formdata
+        print (data)
+
+        config = configparser.ConfigParser()
+        config.read (server_config)
+
+        for key, value in data.items():
+            config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', key, str(value))
+        
+        with open(server_config, 'w') as configfile:
+            config.write(configfile)
+        
+    except Exception as e:
+        return e
+    
+    try:
+        path = get_server_config_paths (server)
+        config = MeshServer.read_config (path)
+
+        saved_path = config['General']['saved_path_dont_touch']
+        server_config = saved_path + '/Config/ServerConfig.ini'
+
+        print (settings)
+
+        config = configparser.ConfigParser()
+        config.read (server_config)
+
+        gameplay_config_str = config.get ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig')
+
+        gameplay_config = parse_gameplay_config (gameplay_config_str)
+
+        for key, value in settings.items():
+            gameplay_config[key] = value
+
+        new_gameplay_config = format_gameplay_config (gameplay_config)
+
+        config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig', new_gameplay_config)
+
+        with open(server_config, 'w') as configfile:
+            config.write(configfile)
+        
+        return jsonify ({"status" : "success"}), 200
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+
+    return True
 
 def update_server_path_name (server):
     global server_info, servers
@@ -1026,6 +1145,7 @@ def generate_config(config_file_path):
     newConfig['General'] = {
         'server_name': server_dir_name,
         'install_dir': 'SCP Pandemic Dedicated Server',
+        'shared_install_dir': 'False',
         'saved_path_dont_touch': '',
         'max_reloads': '7',
         'starting_gamemode': '',
@@ -1127,9 +1247,9 @@ def handle_client (client_socket, client_address):
             config = server.config_path
             response = json.dumps (config)
             client_socket.sendall (response.encode('utf-8'))
-        elif data_action == "initialize":
-            print ("Initializing " + data_server)
-            begin_server ("Server_" + data_server)
+        elif data_action == "create":
+            formdata = data[2]            
+            create_server (formdata)
     except Exception as e:
         print (f"Error handling client {client_address}: {e}")
     finally:

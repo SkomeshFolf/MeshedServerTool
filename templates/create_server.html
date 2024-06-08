@@ -74,6 +74,7 @@
 
                     jsonObject.bOverrideDefaults = $("#server_setup_gameplay_bOverrideDefaults").is(":checked");
                     jsonObject.bUseServerPassword = $("#server_setup_game_server_bUseServerPassword").is (":checked");
+                    jsonObject.shared_install_dir = $("#server_setup_management_sharedDirectory").is (":checked");
 
                     jsonObject['admins'] = jsonObject['admins'].split ('\r\n');
                     jsonObject['owners'] = jsonObject['owners'].split ('\r\n');
@@ -140,6 +141,12 @@
     <div class="container">
         <h1>Create New Server</h1>
 
+        <div class="container">
+            <div class="alert alert-warning" role="alert">
+                Make sure to have installation of an SCP 5k Dedicated Server ready. <a href="{{ url_for ('steamcmd_guide')}}" class="link-primary">Click here for a guide to installing a server using SteamCMD</a>
+            </div>
+        </div>
+        </div>
         <div class="card">
             <div class="card-header">
                 Server Settings
@@ -168,7 +175,25 @@
                                         <label for="server_setup_management_installDir" class="col-form-label">Server Installation Directory</label>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_management_installDir" name="install_dir" placeholder="C:/SteamCMD/steamapps/common/SCP Pandemic Dedicated Server" required>
+                                        <input type="text" class="form-control" id="server_setup_management_installDir" name="install_dir" placeholder="C:/SteamCMD/steamapps/common/SCP Pandemic Dedicated Server" data-bs-toggle="tooltip" data-bs-placement="top" title="path to the root folder of the server install (SCP Pandemic Dedicated Server)" required>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-2">
+                                        <label for="server_setup_management_sharedDirectory" class="col-form-label">Shared Install Directory</label>
+                                    </div>
+                                    <div class="col-1">
+                                        <input type="checkbox" class="form-check-input" id="server_setup_management_sharedDirectory" name="shared_install_dir">
+                                    </div>
+                                    <div class="col">
+                                        <div class="alert alert-primary d-flex align-items-center" role="alert">
+                                            <img src="{{ url_for('static', filename='icon_info.svg') }}" class="bi flex-shrink-0 me-2" width="24" height="24">
+                                            <div>
+                                                Check this box if the specified install directory is the same directory being used for multiple servers.<br>
+                                                The server will share the same whitelist, admin list, ban list, owner list and MOTD messages with every server using the specified directory.
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 

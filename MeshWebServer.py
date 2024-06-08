@@ -374,6 +374,10 @@ def web_server_server_page(server_name):
 def web_server_create_server_page ():
     return render_template ('create_server.html')
 
+@app.route ('/steamcmd_guide')
+def steamcmd_guide ():
+    return render_template ('steamcmd_guide.html')
+
 @app.route ('/control_server', methods=['POST'])
 def control_server ():
     action = request.form.get("action")
@@ -439,34 +443,12 @@ def submit_gameplay_settings (server_name):
 def submit_new_server():
     settings = request.get_json()
 
-    server_name = settings.get ('server_name')
-
     try:
-        os.makedirs (f"Server_{server_name}")
-    except Exception as e:
-        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
-    
-    MeshServer.generate_config (f"{os.getcwd()}/Server_{server_name}/config.ini")
-
-    try:
-        config = configparser.ConfigParser()
-        config.read (f"Server_{server_name}/config.ini")
-
-        for key, value in settings.items():
-            if config.has_option ('General', key):
-                config.set ('General', key, str(value))
-
-        with open(f"Server_{server_name}/config.ini", 'w') as configfile:
-            config.write(configfile)
-    except Exception as e:
-        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
-    
-    try:
-        action = "initialize"
-        server = server_name
+        action = "create"
+        server = settings.get ("server_name")
         port = read_global_config()['WebServer']['web_server_port']
 
-        response = requests.post (f"http://127.0.0.1:5000/control_server", data={"action": action, "server": server})
+        response = requests.post (f"http://127.0.0.1:5000/control_server", data={"action": action, "server": server, "formdata": settings})
 
         #print (get_server_config_paths (server))
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>{{ server.server_name }} Details</title>
+    <title>{{ server.server_name }}</title>
     {% include 'head.html' %}
     <script>
         $(document).ready(function() {
@@ -106,6 +106,7 @@
             function updateStatusBadge (server_info)
             {
                 var badge_class = {
+                    'Creating': 'badge bg-info',
                     'Offline': 'badge bg-secondary',
                     'Crashed': 'badge bg-danger',
                     'Suspended': 'badge bg-info',
