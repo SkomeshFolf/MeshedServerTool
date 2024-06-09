@@ -346,6 +346,7 @@ class Server:
     def execute_server_start (self):
         self.manual_kill_flag = False
         self.manual_shutdown_flag = False
+        self.start_server()
 
     def execute_server_restart (self):
         self.restart_server ("Manual Restart")
@@ -847,8 +848,8 @@ def create_server (formdata):
     except Exception as e:
         return e
 
-    server_info_instance = ServerInfo (server_name_dir)
-    server_instance = Server(server_name_dir, server_name_dir + "/config.ini", server_info_instance)
+    server_info_instance = ServerInfo (server_name)
+    server_instance = Server(server_name, server_name_dir + "/config.ini", server_info_instance)
     servers.append (server_instance)
     server_info.append (server_info_instance)
     server_instance.create_server(formdata.get('shared_install_dir'))
@@ -873,8 +874,8 @@ def create_server (formdata):
 
         gameplay_config = parse_gameplay_config (gameplay_config_str)
 
-        for key, value in gameplay_config.items():
-            if gameplay_config.get (key, False):
+        for key, value in formdata.items():
+            if gameplay_config.get (key, None) is not None:
                 gameplay_config[key] = value
 
         new_gameplay_config = format_gameplay_config (gameplay_config)
@@ -886,6 +887,10 @@ def create_server (formdata):
         
     except Exception as e:
         return e
+    
+    register_server_created (server_name)
+    time.sleep (1)
+    server_instance.init_server()
 
     return True
 
@@ -1174,7 +1179,6 @@ def generate_config(config_file_path):
         newConfig.write(config_file)
 
     print ("Creating config at " + config_file_path)
-    print (server_dir_name)
         
 def read_global_config ():
     if not os.path.exists ("config.ini"):
@@ -1239,13 +1243,17 @@ def listen_for_clients(server_socket):
         
 def handle_client (client_socket, client_address):
     try:
-        buffer_size = 1024  # Adjust buffer size as needed
+        buffer_size = 1024
         data = b""
+        client_socket.settimeout (2)
         while True:
-            chunk = client_socket.recv(buffer_size)
-            if not chunk:
+            try:
+                chunk = client_socket.recv(buffer_size)
+                if not chunk:
+                    break
+                data += chunk
+            except socket.timeout:
                 break
-            data += chunk
         
         request_data = json.loads (data)
 
@@ -1267,7 +1275,6 @@ def handle_client (client_socket, client_address):
             client_socket.sendall (response.encode('utf-8'))
         elif data_action == "create":
             formdata = request_data['formdata']
-            print (formdata)
             create_server(formdata)
     except Exception as e:
         print (f"Error handling client {client_address}: {e}, {traceback.format_exc()}")

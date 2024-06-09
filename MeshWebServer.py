@@ -8,6 +8,7 @@ import threading
 import traceback
 import socket
 import requests
+import math
 import re
 import time
 import MeshServer
@@ -48,6 +49,14 @@ def get_logs(line_count=10, start_range=0, server=None):
         else:
             return output_lines[start_range:start_range + line_count]
 
+def read_log_pages (page_size=10):
+    line_count = 0
+
+    with open("log.txt", 'r') as file:
+        line_count = sum(1 for _ in file)
+
+    return math.ceil (line_count / page_size)
+    
 def get_lock():
     return app.config['lock']
 
@@ -96,7 +105,11 @@ def get_server_settings (server):
     path = get_server_config_paths (server)
     config = MeshServer.read_config (path)
     saved_path = config['General']['saved_path_dont_touch']
-    server_config = saved_path + f'/Config/{server}.ini'
+    shared_dir = config['General']['shared_install_dir']
+    if shared_dir == 'True':
+        server_config = saved_path + f'/Config/{server}.ini'
+    else:
+        server_config = saved_path + f'/Config/ServerConfig.ini'
     config = configparser.ConfigParser()
     config.read (server_config)
     config_dict = {}
@@ -114,7 +127,11 @@ def get_gameplay_settings (server):
     config = MeshServer.read_config (path)
 
     saved_path = config['General']['saved_path_dont_touch']
-    server_config = saved_path + f'/Config/{server}.ini'
+    shared_dir = config['General']['shared_install_dir']
+    if shared_dir == 'True':
+        server_config = saved_path + f'/Config/{server}.ini'
+    else:
+        server_config = saved_path + f'/Config/ServerConfig.ini'
 
     config = configparser.ConfigParser()
     config.read (server_config)
@@ -133,19 +150,29 @@ def get_gameplay_settings (server):
 def get_server_config_paths (server):
     action = 'get_server_config'
     server = server
-    data = f"{server}:{action}"
-    server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        client_socket.connect(server_socket)
-        client_socket.send(data.encode ('utf-8'))
+    payload = {
+        "action": action,
+        "server": server
+    }
+    payload_json = json.dumps (payload)
 
-        response = b""
-        while True:
-            part = client_socket.recv(1024)
-            if not part:
-                break
-            response += part
-        
+    port = int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1
+    server_socket = ('127.0.0.1', port)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect(server_socket)
+            client_socket.sendall(payload_json.encode ('utf-8'))
+
+            response = b""
+            while True:
+                part = client_socket.recv(1024)
+                if not part:
+                    break
+                response += part
+    except Exception as e:
+        print (f"Error during socket communication in get_server_config_paths (). {e}")
+        return e 
+    
     # Decode the response and convert it to a Python dictionary
     response_data = json.loads(response.decode('utf-8'))
     
@@ -199,7 +226,11 @@ def apply_server_settings (server, settings):
         config = MeshServer.read_config (path)
 
         saved_path = config['General']['saved_path_dont_touch']
-        server_config = saved_path + f'/Config/{server}.ini'
+        shared_dir = config['General']['shared_install_dir']
+        if shared_dir:
+            server_config = saved_path + f'/Config/{server}.ini'
+        else:
+            server_config = saved_path + f'/Config/ServerConfig.ini'
 
         data = settings
         print (data)
@@ -223,9 +254,11 @@ def apply_gameplay_settings (server, settings):
         config = MeshServer.read_config (path)
 
         saved_path = config['General']['saved_path_dont_touch']
-        server_config = saved_path + '/Config/ServerConfig.ini'
-
-        print (settings)
+        shared_dir = config['General']['shared_install_dir']
+        if shared_dir:
+            server_config = saved_path + f'/Config/{server}.ini'
+        else:
+            server_config = saved_path + f'/Config/ServerConfig.ini'
 
         config = configparser.ConfigParser()
         config.read (server_config)
@@ -254,8 +287,6 @@ def update_server_info():
         return jsonify({'status': 'failed', 'message': 'Empty data received'}), 204
     try:
         data = request.json
-
-        print (data)
 
         if 'server_info' not in data:
             raise ValueError('Missing "server_info" key in JSON data')
@@ -360,6 +391,14 @@ def web_server_create_server_page ():
 def steamcmd_guide ():
     return render_template ('steamcmd_guide.html')
 
+@app.route ('/logs/<page>')
+def web_server_logs_page (page=1):
+    return render_template ('logs.html', page=page)
+
+@app.route ('/logs/get_max_pages', methods=['POST'])
+def get_log_pages ():
+    return jsonify (read_log_pages ())
+
 @app.route ('/control_server', methods=['POST'])
 def control_server ():
     action = request.form.get("action")
@@ -449,7 +488,6 @@ def submit_new_server():
             client_socket.connect(server_socket)
             client_socket.sendall(payload_json.encode ('utf-8'))
 
-        print (payload_json)
         #print (get_server_config_paths (server))
 
         return jsonify ({'status' : 'success'}), 200

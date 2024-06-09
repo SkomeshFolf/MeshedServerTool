@@ -43,24 +43,6 @@
                 }
             }
 
-
-            /*
-            $.ajax({
-                url: '/update_server_info',
-                type: 'POST',
-                contentType: 'application/json',
-                dataType: 'json',
-                success: function(response, textStatus, jqXHR) {
-                    console.log (jqXHR.status);
-                    if (jqXHR.status != 204) {
-                        update_server_info(response);
-                    }
-                },
-                error: function (xhr, status, error) {
-                    console.error ('Error updating server info', error);
-                }
-            });
-            */
             var eventSource = new EventSource ('/stream_server_info');
             eventSource.addEventListener('message', update_server_info);
             var logEventSource = new EventSource ('/stream_all_server_logs');
