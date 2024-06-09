@@ -232,12 +232,12 @@ def apply_gameplay_settings (server, settings):
 
         gameplay_config_str = config.get ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig')
 
-        gameplay_config = parse_gameplay_config (gameplay_config_str)
+        gameplay_config = MeshServer.parse_gameplay_config (gameplay_config_str)
 
         for key, value in settings.items():
             gameplay_config[key] = value
 
-        new_gameplay_config = format_gameplay_config (gameplay_config)
+        new_gameplay_config = MeshServer.format_gameplay_config (gameplay_config)
 
         config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig', new_gameplay_config)
 
@@ -248,32 +248,14 @@ def apply_gameplay_settings (server, settings):
     except Exception as e:
         return {"status": "error", "message": str(e)}, 500
 
-def parse_gameplay_config(config_str):
-    config_str = config_str.strip('()')
-    config_dict = {}
-    for item in config_str.split(','):
-        key, value = item.split('=')
-        if value.lower() == 'true':
-            value = True
-        elif value.lower() == 'false':
-            value = False
-        elif '.' in value:
-            value = float(value)
-        else:
-            value = int(value)
-        config_dict[key] = value
-    return config_dict
-
-def format_gameplay_config (config_dict):
-    config_str = ','.join([f'{key}={str(value) if isinstance(value, bool) else value}' for key, value in config_dict.items()])
-    return f'({config_str})'
-
 @app.route('/update_server_info', methods=['POST'])
 def update_server_info():
     if not request.data:
         return jsonify({'status': 'failed', 'message': 'Empty data received'}), 204
     try:
         data = request.json
+
+        print (data)
 
         if 'server_info' not in data:
             raise ValueError('Missing "server_info" key in JSON data')
@@ -382,12 +364,16 @@ def steamcmd_guide ():
 def control_server ():
     action = request.form.get("action")
     server = request.form.get("server")
-    data = f"{server}:{action}"
-    print ("Doing action: " + data)
+    payload = {
+        "action": action,
+        "server": server
+    }
+    payload_json = json.dumps (payload)
+
     server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect(server_socket)
-        client_socket.send(data.encode ('utf-8'))
+        client_socket.sendall(payload_json.encode ('utf-8'))
 
     return "", 204
 
@@ -448,8 +434,22 @@ def submit_new_server():
         server = settings.get ("server_name")
         port = read_global_config()['WebServer']['web_server_port']
 
-        response = requests.post (f"http://127.0.0.1:5000/control_server", data={"action": action, "server": server, "formdata": settings})
+        payload = {
+            "action": action,
+            "server": server,
+            "formdata": settings
+        }
+        payload_json = json.dumps (payload)
 
+        if len(payload_json) > 4096:  # Adjust buffer size as needed
+            raise ValueError("Data too large to send")
+
+        server_socket = ('127.0.0.1', int (port) + 1)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect(server_socket)
+            client_socket.sendall(payload_json.encode ('utf-8'))
+
+        print (payload_json)
         #print (get_server_config_paths (server))
 
         return jsonify ({'status' : 'success'}), 200

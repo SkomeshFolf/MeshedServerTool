@@ -178,6 +178,7 @@ from datetime import datetime, time, timedelta
 import time
 import shutil
 import socket
+import traceback
 
 class OSErrorDetectionError (Exception):
     def __init__ (self, message="Either unable to detect the current OS or current OS is not supported."):
@@ -207,7 +208,7 @@ class Server:
     def create_server (self, shared_dir=False):
         self.server_info.server_status_change (-5)
         register_server_creating (self.name)
-        self.update_config_settings()
+        self.read_server_config ()
         self.launch_server_dry (shared_dir)
         time.sleep (3)
         self.kill_server ()
@@ -330,12 +331,17 @@ class Server:
         server_args_raw = []
         if shared_dir:
             server_args_raw = [
+                "-log",
                 f"-Log={self.server_name}/{self.server_name}.log",
                 f"-ConfigFileName={self.server_name}.ini"
             ]
-        server_args = server_args_raw.split(',')
+        else:
+            server_args_raw = [
+                "-log"
+            ]
+        server_args = server_args_raw
         command = [self.server_executable] + server_args
-        self.server_process = subprocess.Popen(server_args)
+        self.server_process = subprocess.Popen(command)
 
     def execute_server_start (self):
         self.manual_kill_flag = False
@@ -810,7 +816,7 @@ def send_server_info ():
 def begin_server (name):
     global server_info, servers
     server_info_instance = ServerInfo (name)
-    server_instance = Server(name, name + "/config.ini", server_info_instance)
+    server_instance = Server(name, "Server_" + name + "/config.ini", server_info_instance)
     servers.append (server_instance)
     server_info.append (server_info_instance)
     server_instance.init_server()
@@ -847,58 +853,61 @@ def create_server (formdata):
     server_info.append (server_info_instance)
     server_instance.create_server(formdata.get('shared_install_dir'))
 
+    config = read_config (server_name_dir + "/config.ini")
+    saved_path = config['General']['saved_path_dont_touch']
+
+    if formdata.get ('shared_install_dir'):
+        server_config = saved_path + f"/Config/{server_name}.ini"
+    else:
+        server_config = saved_path + f"/Config/ServerConfig.ini"
+
     try:
-        config = read_config (server_name_dir + "/config.ini")
-
-        saved_path = config['General']['saved_path_dont_touch']
-        server_config = saved_path + f'/Config/{server_name}.ini'
-
-        data = formdata
-        print (data)
-
         config = configparser.ConfigParser()
         config.read (server_config)
 
-        for key, value in data.items():
-            config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', key, str(value))
+        for key, value in formdata.items():
+            if config.has_option ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', key):
+                config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', key, str(value))
+
+        gameplay_config_str = config.get ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig')
+
+        gameplay_config = parse_gameplay_config (gameplay_config_str)
+
+        for key, value in gameplay_config.items():
+            if gameplay_config.get (key, False):
+                gameplay_config[key] = value
+
+        new_gameplay_config = format_gameplay_config (gameplay_config)
+
+        config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig', new_gameplay_config)
         
         with open(server_config, 'w') as configfile:
             config.write(configfile)
         
     except Exception as e:
         return e
-    
-    try:
-        path = get_server_config_paths (server)
-        config = MeshServer.read_config (path)
-
-        saved_path = config['General']['saved_path_dont_touch']
-        server_config = saved_path + '/Config/ServerConfig.ini'
-
-        print (settings)
-
-        config = configparser.ConfigParser()
-        config.read (server_config)
-
-        gameplay_config_str = config.get ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig')
-
-        gameplay_config = parse_gameplay_config (gameplay_config_str)
-
-        for key, value in settings.items():
-            gameplay_config[key] = value
-
-        new_gameplay_config = format_gameplay_config (gameplay_config)
-
-        config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig', new_gameplay_config)
-
-        with open(server_config, 'w') as configfile:
-            config.write(configfile)
-        
-        return jsonify ({"status" : "success"}), 200
-    except Exception as e:
-        return {"status": "error", "message": str(e)}, 500
 
     return True
+
+def parse_gameplay_config(config_str):
+    config_str = config_str.strip('()')
+    config_dict = {}
+    for item in config_str.split(','):
+        key, value = item.split('=')
+        if value.lower() == 'true':
+            value = True
+        elif value.lower() == 'false':
+            value = False
+        elif '.' in value:
+            value = float(value)
+        else:
+            value = int(value)
+        config_dict[key] = value
+    return config_dict
+
+def format_gameplay_config (config_dict):
+    config_str = ','.join([f'{key}={str(value) if isinstance(value, bool) else value}' for key, value in config_dict.items()])
+    return f'({config_str})'
 
 def update_server_path_name (server):
     global server_info, servers
@@ -1230,9 +1239,18 @@ def listen_for_clients(server_socket):
         
 def handle_client (client_socket, client_address):
     try:
-        data = client_socket.recv(1024).decode ('utf-8').split (':')
-        data_server = data[0]
-        data_action = data[1]
+        buffer_size = 1024  # Adjust buffer size as needed
+        data = b""
+        while True:
+            chunk = client_socket.recv(buffer_size)
+            if not chunk:
+                break
+            data += chunk
+        
+        request_data = json.loads (data)
+
+        data_server = request_data['server']
+        data_action = request_data['action']
 
         if data_action == "start":
             execute_server_start (data_server)
@@ -1248,10 +1266,11 @@ def handle_client (client_socket, client_address):
             response = json.dumps (config)
             client_socket.sendall (response.encode('utf-8'))
         elif data_action == "create":
-            formdata = data[2]            
-            create_server (formdata)
+            formdata = request_data['formdata']
+            print (formdata)
+            create_server(formdata)
     except Exception as e:
-        print (f"Error handling client {client_address}: {e}")
+        print (f"Error handling client {client_address}: {e}, {traceback.format_exc()}")
     finally:
         client_socket.close()
 
@@ -1262,7 +1281,8 @@ def main():
     create_log_file()
 
     for config in configs:
-        name = config['folder']
+        folder_split = config['folder'].split ('_')
+        name = folder_split[1]
         begin_server (name)
     
     global_config = read_global_config()

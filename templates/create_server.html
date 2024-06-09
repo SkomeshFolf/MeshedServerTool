@@ -86,7 +86,7 @@
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
-                            window.location.replace ("/server/" + jsonObject['server_name']);
+                            window.location.assign ("/server/" + jsonObject['server_name']);
                         },
                         error: function (xhr, status, error) {
                             createAlertToast ("Error", "Error applying changes: " + error);
