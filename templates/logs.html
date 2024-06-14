@@ -6,18 +6,17 @@
 
     <script>
         $(document).ready(function() {
-            initPaginationPages();
+            initPaginationPages ();
+            initLogs ();
         });
         function initPaginationPages () 
         {
-            console.log ("Getting data time");
             actionURL = "/logs/get_max_pages"
             $.ajax ({
                 url: actionURL,
                 type: 'POST',
                 contentType: 'application/json',
                 success: function (response) {
-                    console.log ("There are " + response + " pages");
                     setPaginationPages (response);
                 },
                 error: function (xhr, status, error) {
@@ -25,80 +24,162 @@
                 }
             });
         }
+        function initLogs ()
+        {
+            actionURL = "/logs/get_logs"
+            $.ajax ({
+                url: actionURL,
+                type: 'POST',
+                data: JSON.stringify ({
+                   page: parseInt ($("#page").text()),
+                   page_size: 10 
+                }),
+                contentType: 'application/json',
+                success: function (response) {
+                    setLogs (response);
+                },
+                error: function (xhr, status, error) {
+                    console.error (error);
+                }
+            });
+        }
+        function setLogs (response)
+        {
+            var logs = response;
+
+            $('#logs').empty();
+            for (var i = 0; i < logs.length; i++)
+            {
+                var element = logs[i];
+                var listItem = $('<li></li>').addClass('list-group-item');
+                listItem.text(element);
+                $('#logs').append(listItem);
+            }
+        }
+
         function setPaginationPages (pages)
         {
             var page = parseInt ($("#page").text());
+            
             if (pages < 5)
             {
-                for (var i = 1; i <= pages; i++)
-                {
-                    var liElement = $('<li>').addClass('page-item');
-                    var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + i).text(i);
-                    liElement.append(aElement);
-                    $('#page_selector').append(liElement);
-                }
+                generatePages (1, pages, page, pages);
             }
             else
             {
-                if (page < 3)
+                if (page < 4)
                 {
-                    for (var i = 1; i < page + 1; i++)
-                    {
-                        var liElement = $('<li>').addClass('page-item');
-                        var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + i).text(i);
-                        liElement.append(aElement);
-                        $('#page_selector').append(liElement);
-                    }
+                    generatePages (1, Math.max (page + 2, 5), page, pages);
                 }
                 else
                 {
                     if (pages - page < 3)
                     {
-                        for (var i = page - 2; i < pages; i++)
-                        {
-                            var liElement = $('<li>').addClass('page-item');
-                            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + i).text(i);
-                            liElement.append(aElement);
-                            $('#page_selector').append(liElement);
-                        }
+                        generatePages (Math.min (page - 2, pages - 4), pages, page, pages);
                     }
                     else
                     {
-                        for (var i = page - 2; i < page + 2; i++)
-                        {
-                            var liElement = $('<li>').addClass('page-item');
-                            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + i).text(i);
-                            liElement.append(aElement);
-                            $('#page_selector').append(liElement);
-                        }
+                        generatePages (page - 2, page + 2, page, pages);
                     }
                 }
             }
+            
+        }
+
+        function addPaginationNewestPageElement (page)
+        {
+            // Generate "Newest" button
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/1').text("Newest");
+
+            if (page === 1)
+            {
+                liElement.addClass('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+        function addPaginationPreviousPageElement (page)
+        {
+            // Generate "Previous" button
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + (page - 1)).text("Previous");
+            
+            if (page === 1)
+            {
+                liElement.addClass('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+
+        function addPaginationNextPageElement (page, pages)
+        {
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + (page + 1)).text("Next");
+            
+            if (page === pages)
+            {
+                liElement.addClass('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+        function addPaginationOldestPageElement (page, pages)
+        {
+            // Generate "Oldest" button
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + pages).text("Oldest");
+
+            if (page === pages)
+            {
+                liElement.addClass('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+        function generatePages (start, end, current, last)
+        {
+            addPaginationNewestPageElement (current);
+            addPaginationPreviousPageElement (current);
+
+            for (var i = start; i <= end; i++)
+            {
+                addPaginationPageElement (i, i === current);
+            }
+            addPaginationNextPageElement (current, end);
+            addPaginationOldestPageElement (current, last);
+        }
+        function addPaginationPageElement (page, current_page)
+        {
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + page).text(page);
+
+            if (current_page)
+            {
+                liElement.addClass ('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
         }
     </script>
-</head>d
+</head>
 <body>
     {% include 'header.html' %}
 
     <p style="display: none" id="page">{{ page }}</p>
     <div class="container">
-        <h1>Logs</h1>
+        <h1 class="header_text_class">Logs</h1>
 
         <ul class="list-group" id="logs">
-            {% for log in logs %}
-                <li class="list-group-item">{{ log }}</li>
-            {% endfor %}
         </ul>
-        <nav aria-label="Page navigation example">
-            <ul class="pagination" id="page_selector">
-                <!--
-              <li class="page-item"><a class="page-link" href="#">Previous</a></li>
-              <li class="page-item"><a class="page-link" href="#">1</a></li>
-              <li class="page-item"><a class="page-link" href="#">2</a></li>
-              <li class="page-item"><a class="page-link" href="#">3</a></li>
-              <li class="page-item"><a class="page-link" href="#">Next</a></li>
-                -->
-            </ul>
+        <nav>
+            <ul class="pagination" id="page_selector"> </ul>
         </nav>
     </div>
 </body>

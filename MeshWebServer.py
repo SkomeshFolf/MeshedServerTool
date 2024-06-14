@@ -43,11 +43,16 @@ def get_logs(line_count=10, start_range=0, server=None):
             output_lines = all_lines 
     
     if output_lines:
+        if start_range >= len(output_lines):
+            return []  
+        
         output_lines.reverse()
-        if start_range > len(output_lines):
-            return output_lines[:line_count]
-        else:
-            return output_lines[start_range:start_range + line_count]
+
+        end_range = min(start_range + line_count, len(output_lines))
+
+        return output_lines[start_range:end_range]
+    else:
+        return []
 
 def read_log_pages (page_size=10):
     line_count = 0
@@ -398,6 +403,14 @@ def web_server_logs_page (page=1):
 @app.route ('/logs/get_max_pages', methods=['POST'])
 def get_log_pages ():
     return jsonify (read_log_pages ())
+
+@app.route ('/logs/get_logs', methods=['POST'])
+def get_page_logs ():
+    data = request.get_json()
+    page = data.get ("page")
+    page_size = data.get ("page_size")
+    print (f"Getting pages {page} {page_size} making {page * page_size}")
+    return jsonify (get_logs (start_range=((page - 1) * page_size)))
 
 @app.route ('/control_server', methods=['POST'])
 def control_server ():

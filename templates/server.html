@@ -5,14 +5,13 @@
     {% include 'head.html' %}
     <script>
         $(document).ready(function() {
-            
-
             initButtonVisibility();
             initButtonClickListeners();
             initEventListening();
             initSettingForms();
             initLogStreams ();
             disableAllGameplaySettings (true)
+
             $("#server_setup_game_server_ServerPassword").prop("disabled", true);
 
             function sendServerControlRequest(action) 
@@ -593,7 +592,7 @@
     <p style="display: none" id="server_name">{{ server.server_name }}</p>
     <p style="display: none" id="stats_status">{{ server.server_status }}</p>
     <div class="container">
-        <h1>{{ server.server_name }} Details</h1>
+        <h1 class="header_text_class">{{ server.server_name }}</h1>
 
         <div class="card">
             <div class="card-header">
@@ -640,14 +639,14 @@
                 <p class="card-text mb-3">Number of connected users: <span id="text_user_count">{{ server.current_users|length }}</span></p>
                 <div class="card">
                     <div class="card-body" id="div_users">
-                            <ul class="list-group" id="player_list" {% if not server.current_users %} style="display: none;" {% endif %}>
-                                {% for user in server.current_users %}
-                                    <li class="list-group-item">{{ user }}</li>
-                                {% endfor %}
-                            </ul>
-                            <div class="alert alert-warning" id="no_players" role="alert" {% if server.current_users %} style="display: none;" {% endif %}>
-                                Empty or None
-                            </div>
+                        <ul class="list-group" id="player_list" {% if not server.current_users %} style="display: none;" {% endif %}>
+                            {% for user in server.current_users %}
+                                <li class="list-group-item">{{ user }}</li>
+                            {% endfor %}
+                        </ul>
+                        <div class="alert alert-warning" id="no_players" role="alert" {% if server.current_users %} style="display: none;" {% endif %}>
+                            Empty or None
+                        </div>
                     </div>
                 </div>
             </div>
