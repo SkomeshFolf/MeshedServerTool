@@ -402,7 +402,9 @@ def web_server_logs_page (page=1):
 
 @app.route ('/logs/get_max_pages', methods=['POST'])
 def get_log_pages ():
-    return jsonify (read_log_pages ())
+    data = request.get_json ()
+    page = data.get ("page_size")
+    return jsonify (read_log_pages (page))
 
 @app.route ('/logs/get_logs', methods=['POST'])
 def get_page_logs ():
@@ -410,7 +412,7 @@ def get_page_logs ():
     page = data.get ("page")
     page_size = data.get ("page_size")
     print (f"Getting pages {page} {page_size} making {page * page_size}")
-    return jsonify (get_logs (start_range=((page - 1) * page_size)))
+    return jsonify (get_logs (line_count=page_size, start_range=((page - 1) * page_size)))
 
 @app.route ('/control_server', methods=['POST'])
 def control_server ():

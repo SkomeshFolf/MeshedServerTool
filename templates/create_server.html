@@ -304,6 +304,99 @@
 
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
+                                        <label for="server_setup_game_server_bShouldAdvertise" class="col-form-label">Should Advertise (Should show on server browser)</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bShouldAdvertise" name="bShouldAdvertise">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_MaxPlayerCount" class="col-form-label">Max Player Count</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="number" class="form-control" id="server_setup_game_server_MaxPlayerCount" name="MaxPlayerCount" placeholder="4" value="4" max="16" min="2">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_RespawnTime" class="col-form-label">Respawn Time</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="number" class="form-control" id="server_setup_game_server_RespawnTime" name="RespawnTime" placeholder="15" value="15">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bUseWhitelist" class="col-form-label">Use Whitelist</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bUseWhitelist" name="bUseWhitelist">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bUseLAN" class="col-form-label">Use LAN</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bUseLAN" name="bUseLAN">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bTeamDamageEnabled" class="col-form-label">Team Damage Enabled</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bTeamDamageEnabled" name="bTeamDamageEnabled">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_TeamDamageReflection" class="col-form-label">Team Damage Reflection</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_TeamDamageReflection" name="TeamDamageReflection" placeholder="0" value="0.0">
+                                    </div>
+                                </div>                 
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_RoundTimer" class="col-form-label">Round Timer (For PvP Gamemodes)</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_RoundTimer" name="RoundTimer" placeholder="0" value="0">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_ScoreToWin" class="col-form-label">Score To Win (For PvP Gamemodes)</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_ScoreToWin" name="ScoreToWin" placeholder="25" value="25">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
                                         <label for="server_setup_game_server_ZombieSpawnAmount" class="col-form-label">Zombie Spawn Amount</label>
                                     </div>
                                     <div class="col-md-4">
@@ -313,28 +406,10 @@
                             
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
-                                        <label for="server_setup_game_server_RespawnTime" class="col-form-label">Respawn Time</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_game_server_RespawnTime" name="RespawnTime" placeholder="15" value="15">
-                                    </div>
-                                </div>
-                            
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
                                         <label for="server_setup_game_server_MaxZombieCount" class="col-form-label">Max Zombie Count</label>
                                     </div>
                                     <div class="col-md-4">
                                         <input type="text" class="form-control" id="server_setup_game_server_MaxZombieCount" name="MaxZombieCount" placeholder="100" value="100">
-                                    </div>
-                                </div>
-                            
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_RoundTimer" class="col-form-label">Round Timer (For PvP Servers)</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_game_server_RoundTimer" name="RoundTimer" placeholder="0" value="0">
                                     </div>
                                 </div>
                             
@@ -368,23 +443,6 @@
                                             <option value="True">True</option>
                                             <option value="False" selected>False</option>
                                         </select>
-                                    </div>
-                                </div>
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_ScoreToWin" class="col-form-label">Score To Win</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_game_server_ScoreToWin" name="ScoreToWin" placeholder="25" value="25">
-                                    </div>
-                                </div>
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_MaxPlayerCount" class="col-form-label">Max Player Count</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input type="number" class="form-control" id="server_setup_game_server_MaxPlayerCount" name="MaxPlayerCount" placeholder="4" value="4" max="16" min="2">
                                     </div>
                                 </div>
                                 
@@ -434,6 +492,17 @@
                                     </div>
                                 </div>
                                 
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bDenyGameBan" class="col-form-label">Deny Game Ban</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bDenyGameBan" name="bDenyGameBan">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
 
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
@@ -444,6 +513,18 @@
                                     </div>
                                 </div>
                                 
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bDenyVACBan" class="col-form-label">Deny VAC Ban</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bDenyVACBan" name="bDenyVACBan">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
                                         <label for="server_setup_game_server_MaxVACBans" class="col-form-label">Max VAC Bans</label>
@@ -461,31 +542,7 @@
                                         <input type="text" class="form-control" id="server_setup_game_server_MinDaysSinceLastBan" name="MinDaysSinceLastBan" placeholder="150" value="150">
                                     </div>
                                 </div>
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_bDenyVACBan" class="col-form-label">Deny VAC Ban</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bDenyVACBan" name="bDenyVACBan">
-                                            <option value="True" selected>True</option>
-                                            <option value="False">False</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_bDenyGameBan" class="col-form-label">Deny Game Ban</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bDenyGameBan" name="bDenyGameBan">
-                                            <option value="True" selected>True</option>
-                                            <option value="False">False</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                
+                            
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
                                         <label for="server_setup_game_server_bDenyCommunityBan" class="col-form-label">Deny Community Ban</label>
@@ -494,18 +551,6 @@
                                         <select class="form-select" id="server_setup_game_server_bDenyCommunityBan" name="bDenyCommunityBan">
                                             <option value="True" selected>True</option>
                                             <option value="False">False</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_bUseWhitelist" class="col-form-label">Use Whitelist</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bUseWhitelist" name="bUseWhitelist">
-                                            <option value="True">True</option>
-                                            <option value="False" selected>False</option>
                                         </select>
                                     </div>
                                 </div>
@@ -524,19 +569,6 @@
                                 
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
-                                        <label for="server_setup_game_server_bUseLAN" class="col-form-label">Use LAN</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bUseLAN" name="bUseLAN">
-                                            <option value="True">True</option>
-                                            <option value="False" selected>False</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
                                         <label for="server_setup_game_server_EmptyServerRestartTime" class="col-form-label">Empty Server Restart Time</label>
                                     </div>
                                     <div class="col-md-4">
@@ -550,18 +582,6 @@
                                     </div>
                                     <div class="col-md-4">
                                         <input type="text" class="form-control" id="server_setup_game_server_AFKTimer" name="AFKTimer" placeholder="300" value="300">
-                                    </div>
-                                </div>
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_bShouldAdvertise" class="col-form-label">Should Advertise</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bShouldAdvertise" name="bShouldAdvertise">
-                                            <option value="True" selected>True</option>
-                                            <option value="False">False</option>
-                                        </select>
                                     </div>
                                 </div>
                                 
@@ -588,27 +608,6 @@
                                         </select>
                                     </div>
                                 </div>
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_bTeamDamageEnabled" class="col-form-label">Team Damage Enabled</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <select class="form-select" id="server_setup_game_server_bTeamDamageEnabled" name="bTeamDamageEnabled">
-                                            <option value="True">True</option>
-                                            <option value="False" selected>False</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                
-                                <div class="row mb-1 g-3 align-items-center">
-                                    <div class="col-md-4">
-                                        <label for="server_setup_game_server_TeamDamageReflection" class="col-form-label">Team Damage Reflection</label>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <input type="text" class="form-control" id="server_setup_game_server_TeamDamageReflection" name="TeamDamageReflection" placeholder="0" value="0.0">
-                                    </div>
-                                </div>                          
                             </div>
                         </div>
                         <div class="accordion-item" id="server_setup_gameplay_accordion">

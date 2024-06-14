@@ -4,27 +4,55 @@
     <title>SteamCMD Guide</title>
     {% include 'head.html' %}
 </head>
+<style>
+    h1, h2, h3, h4, h5, p {
+        font-family: Verdana, Geneva, Tahoma, sans-serif;
+    }
+    li > p, li > small {
+        padding-left: 32px;
+    }
+    .code_text {
+        font-family: 'Courier New', Courier, monospace;
+    }
+</style>
 <body>
     {% include 'header.html' %}
 
     <div class="container">
         <div class="container">
-            <h2 class="mt-5">Instructions</h2>
+            <h2 class="my-5"><b>Installing an SCP: 5K server with SteamCMD</b></h2>
             <ul class="list-unstyled">
                 <li class="mb-3">
-                    <h5 class="mb-1">Step 1</h5>
-                    <p class="mb-1">Do something for step 1.</p>
-                    <small>Additional instructions or details if needed.</small>
+                    <h5 class="mb-1">Install SteamCMD</h5>
+                    <p class="mb-1">First install SteamCMD <a href="https://developer.valvesoftware.com/wiki/SteamCMD#Downloading_SteamCMD">from this link.</a></p>
+                    <small>On this page, follow the install instructions depending on your OS. For Windows, you need to click the [1] hyperlink to download SteamCMD.</small>
                 </li>
                 <li class="mb-3">
-                    <h5 class="mb-1">Step 2</h5>
-                    <p class="mb-1">Do something for step 2.</p>
-                    <small>Additional instructions or details if needed.</small>
+                    <h5 class="mb-1">Launch SteamCMD</h5>
                 </li>
                 <li class="mb-3">
-                    <h5 class="mb-1">Step 3</h5>
-                    <p class="mb-1">Do something for step 3.</p>
-                    <small>Additional instructions or details if needed.</small>
+                    <h5 class="mb-1">Set install directory</h5>
+                    <p class="mb-1">If you wish to set a custom install directory, use the command: </p>
+                    <p class="code_text">force_install_dir (directory)</p>
+                    <small>Example: <span class="code_text">force_install_dir C:/SCPServers</span></small>
+                </li>
+                <li class="mb-3">
+                    <h5 class="mb-1">Login as anonymous</h5>
+                    <p class="mb-1">Login as anonymous by executing the command:</p>
+                    <p class="code_text">login anonymous</p>
+                </li>
+                <li class="mb-3">
+                    <h5 class="mb-1">Install SCP Pandemic Dedicated Server</h5>
+                    <p class="mb-1">Install the server by using the command: </p>
+                    <p class="code_text">app_update 884110 validate</p>
+                    <small>This is the same process to update the server when the game gets updated</small>
+                </li>
+                <li class="mb-3">
+                    <h5 class="mb-1">Done</h5>
+                    <p>
+                        The SCP 5K server will now install at the designated directory. Once it's done, you can
+                        close SteamCMD and go back to the previous page to create the server.
+                    </p>
                 </li>
             </ul>
         </div>        

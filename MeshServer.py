@@ -229,7 +229,7 @@ class Server:
     def update_config_settings (self):
         self.server_name = self.config['General']['server_name']
         self.install_dir = self.config['General']['install_dir']
-        self.shared_dir = self.config['General']['shared_install_dir']
+        self.shared_dir = ast.literal_eval (self.config['General']['shared_install_dir'])
         self.max_reloads = int(self.config['General']['max_reloads'])
         self.starting_gamemode = self.config['General']['starting_gamemode']
         self.restricted_gamemode = self.config['General']['restricted_gamemode']
@@ -258,11 +258,17 @@ class Server:
     def update_file_paths (self):
         os_name = platform.system ()
         if os_name == "Windows":
-            self.log_file_path = self.install_dir + f'/WindowsServer/Pandemic/Saved/Logs/{self.server_name}/{self.server_name}.log'
+            if self.shared_dir:
+                self.log_file_path = self.install_dir + f'/WindowsServer/Pandemic/Saved/Logs/{self.server_name}/{self.server_name}.log'
+            else:
+                self.log_file_path = self.install_dir + f'/WindowsServer/Pandemic/Saved/Logs/Pandemic.log'
             self.saved_file_path = self.install_dir + '/WindowsServer/Pandemic/Saved'
             self.server_executable = self.install_dir + '/WindowsServer/PandemicServer.exe'
         elif os_name == "Linux":
-            self.log_file_path = self.install_dir + f'/LinuxServer/Pandemic/Saved/Logs/{self.server_name}/{self.server_name}.log'
+            if self.shared_dir:
+                self.log_file_path = self.install_dir + f'/LinuxServer/Pandemic/Saved/Logs/{self.server_name}/{self.server_name}.log'
+            else:
+                self.log_file_path = self.install_dir + f'/LinuxServer/Pandemic/Saved/Logs/Pandemic.log'
             self.saved_file_path = self.install_dir + '/LinuxServer/Pandemic/Saved'
             self.server_executable = self.install_dir + '/LinuxServer/Pandemic/Binaries/Linux/PandemicServer'
         else:
@@ -317,6 +323,7 @@ class Server:
                 f"-queryport={self.query_port}",
                 f"-SteamServerName={self.server_name}"
             ]
+
             if self.shared_dir:
                 essential_server_args.append (f"-Log={self.server_name}/{self.server_name}.log")
                 essential_server_args.append (f"-ConfigFileName={self.server_name}.ini")

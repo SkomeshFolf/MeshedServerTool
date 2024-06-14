@@ -8,14 +8,20 @@
         $(document).ready(function() {
             initPaginationPages ();
             initLogs ();
+            initEventListeners();
+            console.log (getPageSize());
         });
         function initPaginationPages () 
         {
+            page_size = getPageSize ();
             actionURL = "/logs/get_max_pages"
             $.ajax ({
                 url: actionURL,
                 type: 'POST',
                 contentType: 'application/json',
+                data: JSON.stringify ({
+                    page_size: page_size
+                }),
                 success: function (response) {
                     setPaginationPages (response);
                 },
@@ -26,13 +32,14 @@
         }
         function initLogs ()
         {
+            page_size = getPageSize ();
             actionURL = "/logs/get_logs"
             $.ajax ({
                 url: actionURL,
                 type: 'POST',
                 data: JSON.stringify ({
                    page: parseInt ($("#page").text()),
-                   page_size: 10 
+                   page_size: page_size 
                 }),
                 contentType: 'application/json',
                 success: function (response) {
@@ -42,6 +49,44 @@
                     console.error (error);
                 }
             });
+        }
+        function initEventListeners ()
+        {
+            $("#page_size_select").change (function (){
+                var value = $(this).val();
+                setPageSize (parseInt (value));
+                location.reload();
+            });
+
+            var page_size = getPageSize ();
+            $("#page_size_select").val (page_size);
+        }
+
+        function getPageSize ()
+        {
+            let name = "page_size=";
+            let decodedCookie = decodeURIComponent(document.cookie);
+            let ca = decodedCookie.split(';');
+
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') {
+                    c = c.substring(1);
+                }
+                    if (c.indexOf(name) == 0) {
+                        return parseInt (c.substring(name.length, c.length));
+                }
+            }
+            return 10;
+        }
+        function setPageSize (size)
+        {
+            var name = "page_size";
+            var timeToLive = 7;
+            var cookie = name + "=" + encodeURIComponent (size);
+            cookie += "; max-age=" + timeToLive;
+            
+            document.cookie = cookie;
         }
         function setLogs (response)
         {
@@ -142,6 +187,7 @@
             liElement.append(aElement);
             $('#page_selector').append(liElement);
         }
+        
         function generatePages (start, end, current, last)
         {
             addPaginationNewestPageElement (current);
@@ -178,8 +224,18 @@
 
         <ul class="list-group" id="logs">
         </ul>
-        <nav>
-            <ul class="pagination" id="page_selector"> </ul>
+        <nav class="d-flex justify-content-between align-items-center mt-3">
+            <ul class="pagination mb-0" id="page_selector"> </ul>
+            <div class="d-inline mb-0 ms-auto me-0">
+                <span class="d-inline float-start me-3 mt-2">Logs Per Page</span>
+                <select id="page_size_select" class="form-select" style="width: 96px;">
+                    <option selected value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
         </nav>
     </div>
 </body>
