@@ -12,13 +12,15 @@ import math
 import re
 import time
 import MeshServer
-from MeshServer import ServerInfo
+from MeshServer import ServerInfo, UserReport
 
 app = Flask(__name__)
 CORS(app)
 
 app.config['servers'] = {}
 app.config['lock'] = threading.Lock()
+
+new_reports = []
 
 def get_servers():
     with app.app_context():
@@ -319,7 +321,28 @@ def update_server_info():
                     }
                     response_data['servers'].append(server_data)
 
-        return jsonify(response_data)  # Return JSON response directly
+        return jsonify(response_data)
+    except JSONDecodeError as e:
+        return jsonify({'status': 'error', 'message': 'Invalid JSON data received'}), 400
+    except Exception as e:
+            print(f"Error updating server info: {e}, {data}")
+            return 'Error updating server info', 500
+
+@app.route('/receive_new_reports', methods=['POST'])
+def receive_new_reports():
+    if not request.data:
+        return jsonify({'status': 'failed', 'message': 'Empty data received'}), 204
+    
+    try:
+        global new_reports
+        data = request.get_json()
+        reports_data = json.loads (data)
+
+        new_reports.clear()
+
+        for report in reports_data:
+            new_reports.append (report)
+
     except JSONDecodeError as e:
         return jsonify({'status': 'error', 'message': 'Invalid JSON data received'}), 400
     except Exception as e:
@@ -370,6 +393,17 @@ def stream_server_logs(server_name):
 
                 time.sleep (2)
     return Response(generate(), mimetype='text/event-stream')
+
+@app.route ('/stream_new_reports')
+def stream_new_reports ():
+    def generate():
+        with app.app_context():
+            while True:
+                global new_reports
+                yield f"data: {json.dumps(new_reports)}\n\n"
+
+                time.sleep (10)
+    return Response (generate(), mimetype='text/event-stream')
 
 @app.route('/')
 def web_server_home ():

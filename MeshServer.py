@@ -1,5 +1,5 @@
 """
-    # Mesh Server Tool
+    # Meshed Server Tool
 
     Author: Skomesh
     Version 2.0.0
@@ -98,61 +98,6 @@
                 - Join MOTD
                 - Crash MOTD
             - Edit game server config
-                - Admins
-                - Owners
-                - Whitelist
-                - ZombieSpawnAmount [1]
-                - RespawnTime [15]
-                - MaxZombieCount [100]
-                - RoundTimer [0]
-                - ResetZombieSpawners [False]
-                - ZombieRespawnTime [600]
-                - DisableGodmode [False]
-                - ScoreToWin [25]
-                - ServerName [Default to the other server name]
-                - MaxPlayerCount [4]
-                - bRestartServerEachGame [False]
-                - bUseSeamlessTravel [True]
-                - bAnyoneUseADminCam [False]
-                - bUseServerPassword [False]
-                - ServerPassword [Active only if uses server password]
-                - MaxGameBans [2]
-                - MaxVACBans [2]
-                - MinDaysSinceLastBan [150]
-                - bDenyVACBan [True]
-                - bDenyGameBan [True]
-                - bDenyCommunityBan [True]
-                - bUseWhitelist [False]
-                - bFriendsOnly [Hide]
-                - bUseLAN [False]
-                - EmptyServerRestartTime [30]
-                - AFKTimer [300]
-                - bShouldAdvertise [True]
-                - bAdminsAlwaysJoin [True]
-                - bDevsAlwaysJoin [True]
-                - bTeamDamageEnabled [False]
-                - TeamDamageReflection [0]
-                - GameplayConfig=()[Everything after this is all one line, separated by commas]
-                    - bOverrideDefaults [False]
-                    - RecoilMultiplier []
-                    - SpreadMultiplier [1]
-                    - bCanSprint [True]
-                    - MovementSpeedMultiplier [1]
-                    - CharacterDamageMultiplier [1]
-                    - CharacterHealthMultiplier [1]
-                    - LandingSprintDelay [0.4]
-                    - LandingJumpDelay [0.75]
-                    - bForceFreeAimMultiplier [False]
-                    - FreeAimMultiplier [0.2]
-                    - ADSFreeAimMultiplier [0]
-                    - bForceCanReloadWhileAiming [False]
-                    - bForceNoReloadWhileSprinting [False]
-                    - ReloadSpeedMultiplier [1]
-                    - ADSSpeedMultiplier [1]
-                    - SmoothAimMultiplier [1]
-                    - CanADSInNightVision [False]
-                    - bCanBracedAim [True]
-                    - bUseHeightOverBore [False]
         - Add webpage settings
             - Dark theme
         - Add global settings
@@ -179,6 +124,11 @@ import time
 import shutil
 import socket
 import traceback
+import hashlib
+from platformdirs import user_data_dir, user_config_dir, user_cache_dir
+
+app_name = "Meshed Server Tool"
+app_author = "Skomesh"
 
 class OSErrorDetectionError (Exception):
     def __init__ (self, message="Either unable to detect the current OS or current OS is not supported."):
@@ -605,7 +555,6 @@ class Server:
                                     self.idle_server()
                                     self.server_started = True
                                 
-                    # TODO: Handle reports
                     send_server_info ()
                     time.sleep(self.log_check_interval)
 
@@ -678,8 +627,9 @@ class ServerInfo:
                f"server_status={self.server_status})"
     
 class UserReport:
-    def __init__ (self, server, target, target_id, source, source_id, date, reason, text):
-        self.server = server
+    report_directories = []
+
+    def __init__ (self, target, target_id, source, source_id, date, reason, text):
         self.target = target
         self.target_id = target_id
         self.source = source
@@ -687,6 +637,88 @@ class UserReport:
         self.date = date
         self.reason = reason
         self.text = text
+        self.hash = self.generate_hash()
+
+    def generate_hash (self):
+        hasher = hashlib.md5()
+        hasher.update(f"{self.target}{self.target_id}{self.source}{self.source_id}{self.date}{self.reason}{self.text}".encode('utf-8'))
+        return hasher.hexdigest()
+    
+    @staticmethod
+    def register_reports_directory (dir):
+        if dir not in UserReport.report_directories:
+            UserReport.report_directories.append(dir)
+
+    @staticmethod
+    def remove_reports_directory (dir):
+        UserReport.report_directories.remove (dir)
+
+    @staticmethod
+    def search_directories (dir):
+        new_reports = []
+        for directory in UserReport.report_directories:
+            if not os.path.isdir(directory):
+                print(f"[UserReport.search_directories] Warning: Directory '{directory}' does not exist.")
+                UserReport.remove_reports_directory (directory)
+                continue
+            
+            for filename in os.listdir(directory):
+                file_path = os.path.join(directory, filename)
+                if os.path.isfile(file_path):
+                    with open(file_path, 'r') as file:
+                        file_contents = file.read()
+                        report = UserReport.parse_report(file_contents)
+                        
+                        if not UserReport.has_report_been_handled (report.hash):
+                            new_reports.append (report)
+
+        send_new_reports (new_reports)
+
+                        
+    @staticmethod
+    def has_report_been_handled (hash):
+        handled_path = os.path.join (data_dir, "handled_reports.txt")
+
+        if not os.path.isfile(handled_path):
+            with open (handled_path, 'w') as file:
+                pass
+    
+        with open(handled_path, 'r') as file:
+            for line in file:
+                if line.strip() == hash:
+                    return True
+        
+        return False
+
+    @staticmethod
+    def parse_report(file_contents):
+        # Split the lines of the file
+        lines = file_contents.split('\n')
+
+        # Parse individual fields based on line number
+        target_id, target = lines[0].split(',')
+        source_id, source = lines[1].split(',')
+        date_str = lines[2].strip()
+        date = datetime.strptime(date_str, '%Y.%m.%d-%H.%M.%S')
+        reason = lines[4].strip()
+        text = lines[5].strip()
+
+        return UserReport(target, target_id, source, source_id, date, reason, text)
+
+    @staticmethod
+    def handle_report (hash):
+        handled_path = os.path.join (data_dir, "handled_reports.txt")
+
+        with open (handled_path, 'a') as file:
+            file.write (hash + '\n')
+    
+    def __str__ (self):
+        return f"Report(server={self.server}, target={self.target}, target_id={self.target_id}, source={self.source}, source_id={self.source_id}, date={self.date}, reason={self.reason}, text={self.text}, hash={self.hash})"
+    
+    def __eq__ (self, other):
+        if isinstance(other, UserReport):
+            return self.hash == other.hash
+        return False
 
 servers = []
 server_info = []
@@ -764,6 +796,7 @@ def register_web_server_error (e):
     print (f"Web Server Error: {e}")
     write_to_log ("Web Server", f"Web Server Error: {e}")
 
+
 def execute_server_start (server):
     get_server_from_name (server).execute_server_start()
 
@@ -775,6 +808,7 @@ def execute_server_stop (server):
 
 def execute_server_kill (server):
     get_server_from_name (server).execute_server_kill ()
+
 
 def send_server_info ():
     global server_info
@@ -803,6 +837,50 @@ def send_server_info ():
     config = read_global_config()
     json_data = json.dumps (server_info_dicts)
     url = (f"http://{config['WebServer']['web_server_address']}:{config['WebServer']['web_server_port']}/update_server_info")
+    try:
+        json_string = {"server_info": json_data}
+        response = requests.post(url, json=json_string)
+    except requests.exceptions.ConnectionError as e:
+        if check_web_server():
+            register_web_server_error (f"Unknown Web Server Error. {e}")
+            return
+        else:
+            register_web_server_error (f"Web server either crashed or lost connection. Attempting to reconnect.")
+            return
+    except requests.exceptions.Timeout as e:
+        if check_web_server():
+            register_web_server_error (f"Unknown Web Server Error. {e}")
+            return
+        else:
+            register_web_server_error (f"Web server either crashed or lost connection. Attempting to reconnect.")
+            return
+
+def send_new_reports (reports):
+    global server_info
+    global web_server_address
+    
+    # Check web server status, return if offline, not found or not used.
+    if not check_web_server():
+        print ("Failed to ping web server")
+        return
+    
+    report_dict = [
+    {
+        'target': report.target,
+        'target_id': report.target_id,
+        'source': report.source,
+        'source_id': report.source_id,
+        'date': report.date,
+        'reason': report.reason,
+        'text': report.text,
+        'hash': report.hash
+    }
+    for report in reports
+    ]
+   
+    config = read_global_config()
+    json_data = json.dumps (report_dict)
+    url = (f"http://{config['WebServer']['web_server_address']}:{config['WebServer']['web_server_port']}/receive_new_reports")
     try:
         json_string = {"server_info": json_data}
         response = requests.post(url, json=json_string)
@@ -1007,32 +1085,6 @@ def log_is_player_id(log_file_path):
     for steam_id in steam_ids:
         print(steam_id)
 
-"""
-def check_reports (saved_file_path, server):
-    reports = []
-
-    try:
-        # Iterate over all files in the directory
-        for filename in os.listdir(f"{saved_file_path}/Reports"):
-            file_path = os.path.join(f"{saved_file_path}/Reports", filename)
-
-            # Check if the path is a file
-            if os.path.isfile(file_path):
-                print(f"Reading and parsing contents of file: {filename}")
-
-                # Read and parse the contents of the file
-                with open(file_path, 'r') as file:
-                    file_contents = file.read()
-                    report = parse_report(file_contents, server)
-                    if not check_report_handled(report):
-                        reports.append(report)
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-    return reports
-"""
-
 def get_server_from_name (name):
     global servers
 
@@ -1095,22 +1147,6 @@ def start_wait_for_web_server_thread():
     global wait_for_web_server_thread
     if wait_for_web_server_thread == None:
         wait_for_web_server_thread = threading.Thread(target=wait_for_web_server, daemon=True).start()
-
-def parse_report(file_contents, server):
-    # Split the lines of the file
-    lines = file_contents.split('\n')
-
-    # Parse individual fields based on line number
-    target_id, target = lines[0].split(',')
-    source_id, source = lines[1].split(',')
-    date_str = lines[2].strip()
-    date = datetime.strptime(date_str, '%Y.%m.%d-%H.%M.%S')
-    reason = lines[4].strip()
-    text = lines[5].strip()
-
-    return UserReport(server, target, target_id, source, source_id, date, reason, text)
-
-#def check_report_handled (report):
 
 def write_to_log (server, content):
     current_datetime = datetime.now()
@@ -1212,6 +1248,7 @@ def generate_global_config ():
         new_config.write (config_file)
 
 
+
 def async_output_server_info():
     while True:
         time.sleep(10)  
@@ -1283,13 +1320,24 @@ def handle_client (client_socket, client_address):
         elif data_action == "create":
             formdata = request_data['formdata']
             create_server(formdata)
+        elif data_action == "handle_report":
+            report_hash = request_data['report_hash']
+            UserReport.handle_report (report_hash)
     except Exception as e:
         print (f"Error handling client {client_address}: {e}, {traceback.format_exc()}")
     finally:
         client_socket.close()
 
-
 def main():
+    global data_dir, config_dir, cache_dir
+    data_dir = user_data_dir (app_name, app_author)
+    config_dir = user_config_dir (app_name, app_author)
+    cache_dir = user_cache_dir (app_name, app_author)
+
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(config_dir, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
+
     configs = get_all_server_paths()
     
     create_log_file()

@@ -220,6 +220,8 @@
 
                 $("#server_setup_management_serverName").val (obj.General.server_name);
                 $("#server_setup_management_installDir").val (obj.General.install_dir);
+                var shared_dir = obj.General.shared_install_dir === "True";
+                $("#server_setup_management_sharedDir").prop ('checked', shared_dir);
                 $("#server_setup_management_maxReloads").val (obj.General.max_reloads);
                 $("#server_setup_management_port").val (obj.General.port);
                 $("#server_setup_management_queryPort").val (obj.General.queryport);
@@ -374,13 +376,15 @@
                         jsonObject [keyValue[0]] = decodeURIComponent (keyValue[1]);
                     });
 
+                    jsonObject.shared_install_dir = $("#server_setup_management_sharedDirectory").is(":checked");
+
                     $.ajax ({
                         url: actionURL,
                         type: 'POST',
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
-                            createRestartServerToast ("Success", "You must restart your server for changes to apply");
+                            createRestartServerToast ("Success", "You may need to restart your server for some changes to apply");
                         },
                         error: function (xhr, status, error) {
                             createRestartServerToast ("Error", "Error applying changes: " + error);
@@ -424,7 +428,15 @@
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
-                            createRestartServerToast ("Success", "You must restart your server for changes to apply");
+                            var sharedDir = $("#server_setup_management_sharedDirectory").is(":checked");
+                            if (sharedDir)
+                            {
+                                createAlertToast ("Success", "You must restart each server that uses this directory for changes to individually apply.");
+                            }
+                            else
+                            {
+                                createRestartServerToast ("Success", "You must restart the server for changes to apply.");
+                            }
                         },
                         error: function (xhr, status, error) {
                             createRestartServerToast ("Error", "Error applying changes: " + error);
@@ -686,6 +698,24 @@
                                     </div>
                                     <div class="col-md-4">
                                         <input type="text" class="form-control" id="server_setup_management_installDir" name="install_dir">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-3">
+                                        <label for="server_setup_management_sharedDirectory" class="col-form-label">Shared Install Directory</label>
+                                    </div>
+                                    <div class="col-1">
+                                        <input type="checkbox" class="form-check-input" id="server_setup_management_sharedDirectory" name="shared_install_dir">
+                                    </div>
+                                    <div class="col">
+                                        <div class="alert alert-primary d-flex align-items-center" role="alert">
+                                            <img src="{{ url_for('static', filename='icon_info.svg') }}" class="bi flex-shrink-0 me-2" width="24" height="24">
+                                            <div>
+                                                Check this box if the specified install directory is the same directory being used for multiple servers.<br>
+                                                The server will share the same whitelist, admin list, ban list, owner list and MOTD messages with every server using the specified directory.
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
