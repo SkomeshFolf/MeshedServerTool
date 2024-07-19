@@ -126,7 +126,6 @@ import socket
 import traceback
 import hashlib
 from platformdirs import user_data_dir, user_config_dir, user_cache_dir
-from pathlib import Path
 
 class OSErrorDetectionError (Exception):
     def __init__ (self, message="Either unable to detect the current OS or current OS is not supported."):
@@ -1365,50 +1364,13 @@ def handle_client (client_socket, client_address):
         client_socket.close()
 
 def main():
-    global data_dir, config_dir, cache_dir
+    global data_dir, config_dir
 
     app_name = "Meshed Server Tool"
     app_author = "Skomesh"
 
-    data_dir = user_data_dir (app_name, app_author)
-    config_dir = user_config_dir (app_name, app_author)
-    cache_dir = user_cache_dir (app_name, app_author)
-    
-    """
-    path = data_dir
-
-    if os.path.exists(data_dir):
-        print ("Yes")
-    else:
-        print ("No")
-
-    try:
-        with open(os.path.join(path, 'test_file.tmp'), 'w') as f:
-            pass
-        print("Write permission is available")
-    except PermissionError:
-        print("Write permission is not available")
-
-    try:
-        os.makedirs(path, exist_ok=True)
-        print("Directory created successfully")
-    except PermissionError:
-        print("Permission denied")
-    except Exception as e:
-        print(f"Error occurred: {e}")
-
-    os.makedirs(data_dir, exist_ok=True)
-    os.makedirs(config_dir, exist_ok=True)
-    os.makedirs(cache_dir, exist_ok=True)
-    """
-
-    print (data_dir)
-
-    os.makedirs ("C:\\Users\\Skomesh\\AppData\\SkomeshMeshServer")
-
-   #Path (data_dir).mkdir (parents=True, exist_ok=True)
-
-    return
+    data_dir = user_data_dir (app_name, app_author, ensure_exists=True)
+    config_dir = user_config_dir (app_name, app_author, ensure_exists=True)
 
     configs = get_all_server_paths()
     

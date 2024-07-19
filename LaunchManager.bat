@@ -1,2 +1,2 @@
-python3 MeshServer.py
+python MeshServer.py
 pause
