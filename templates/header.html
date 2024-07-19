@@ -18,14 +18,14 @@
         }
         function initReportStream()
         {
-            var logEventSource = new EventSource ('/server/' + $("#server_name").text() + '/stream_server_logs');
-            logEventSource.addEventListener('message', update_logs);
+            var logEventSource = new EventSource ('/stream_new_reports');
+            logEventSource.addEventListener('message', update_reports);
         }
         function update_reports (event)
         {
             var reports = JSON.parse (event.data);
             
-            updateBadge (reports.length)
+            updateBadge (reports.length);
         }
     </script>
 
@@ -43,7 +43,7 @@
                         </a>
                     </li>
                     <li class="nav-item mx-2">
-                        <a href="#" class="nav-link d-flex flex-column align-items-center">
+                        <a href="{{ url_for('web_server_reports')}}" class="nav-link d-flex flex-column align-items-center">
                             <img src="{{ url_for('static', filename='icon_reports.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
                             <span class="d-none d-md-block">Reports</span>
                             <span class="position-relative badge rounded-pill bg-danger" id ="header_reports_badge" style="bottom:64px; left:24px">

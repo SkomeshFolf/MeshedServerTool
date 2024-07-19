@@ -52,7 +52,7 @@
                 $("#create_server_form").submit (function (event) {
                     event.preventDefault();
 
-                    console.log ("Check");
+                    $("button").prop ('disabled', true);
 
                     if (!inputValidation())
                     {

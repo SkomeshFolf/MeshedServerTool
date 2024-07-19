@@ -126,9 +126,7 @@ import socket
 import traceback
 import hashlib
 from platformdirs import user_data_dir, user_config_dir, user_cache_dir
-
-app_name = "Meshed Server Tool"
-app_author = "Skomesh"
+from pathlib import Path
 
 class OSErrorDetectionError (Exception):
     def __init__ (self, message="Either unable to detect the current OS or current OS is not supported."):
@@ -169,6 +167,8 @@ class Server:
         if not self.check_if_valid_install_dir():
             self.wait_for_valid_install_dir()
 
+        UserReport.register_reports_directory (self.saved_file_path + '/Reports')
+
         self.start_server()
         self.start_log_analysis()
     
@@ -202,25 +202,25 @@ class Server:
     def update_server_path_name (self, new_name):
         self.name = new_name
         self.server_info.server_name = new_name
-        self.config_path = f"Server_{new_name}/config.ini"
+        self.config_path = os.path.join (f"Server_{new_name}", "config.ini")
         self.read_server_config ()
         
     def update_file_paths (self):
         os_name = platform.system ()
         if os_name == "Windows":
             if self.shared_dir:
-                self.log_file_path = self.install_dir + f'/WindowsServer/Pandemic/Saved/Logs/{self.server_name}/{self.server_name}.log'
+                self.log_file_path = os.path.join(self.install_dir, 'WindowsServer', 'Pandemic', 'Saved', 'Logs', self.server_name, f'{self.server_name}.log')
             else:
-                self.log_file_path = self.install_dir + f'/WindowsServer/Pandemic/Saved/Logs/Pandemic.log'
-            self.saved_file_path = self.install_dir + '/WindowsServer/Pandemic/Saved'
-            self.server_executable = self.install_dir + '/WindowsServer/PandemicServer.exe'
+                self.log_file_path = os.path.join(self.install_dir, 'WindowsServer', 'Pandemic', 'Saved', 'Logs', 'Pandemic.log')
+            self.saved_file_path = os.path.join(self.install_dir, 'WindowsServer', 'Pandemic', 'Saved')
+            self.server_executable = os.path.join(self.install_dir, 'WindowsServer', 'PandemicServer.exe')
         elif os_name == "Linux":
             if self.shared_dir:
-                self.log_file_path = self.install_dir + f'/LinuxServer/Pandemic/Saved/Logs/{self.server_name}/{self.server_name}.log'
+                self.log_file_path = os.path.join(self.install_dir, 'LinuxServer', 'Pandemic', 'Saved', 'Logs', self.server_name, f'{self.server_name}.log')
             else:
-                self.log_file_path = self.install_dir + f'/LinuxServer/Pandemic/Saved/Logs/Pandemic.log'
-            self.saved_file_path = self.install_dir + '/LinuxServer/Pandemic/Saved'
-            self.server_executable = self.install_dir + '/LinuxServer/Pandemic/Binaries/Linux/PandemicServer'
+                self.log_file_path = os.path.join(self.install_dir, 'LinuxServer', 'Pandemic', 'Saved', 'Logs', 'Pandemic.log')
+            self.saved_file_path = os.path.join(self.install_dir, 'LinuxServer', 'Pandemic', 'Saved')
+            self.server_executable = os.path.join(self.install_dir, 'LinuxServer', 'Pandemic', 'Binaries', 'Linux', 'PandemicServer')
         else:
             raise OSErrorDetectionError
     
@@ -628,6 +628,7 @@ class ServerInfo:
     
 class UserReport:
     report_directories = []
+    checking_thread = None
 
     def __init__ (self, target, target_id, source, source_id, date, reason, text):
         self.target = target
@@ -654,7 +655,19 @@ class UserReport:
         UserReport.report_directories.remove (dir)
 
     @staticmethod
-    def search_directories (dir):
+    def start_report_checking_thread ():
+        if UserReport.checking_thread is None:
+            UserReport.checking_thread = threading.Thread(target=UserReport.report_checking_thread, daemon=True).start()
+    
+    @staticmethod
+    def report_checking_thread ():
+        time.sleep (5)
+        while True:
+            UserReport.search_directories ()
+            time.sleep (60)
+
+    @staticmethod
+    def search_directories ():
         new_reports = []
         for directory in UserReport.report_directories:
             if not os.path.isdir(directory):
@@ -673,8 +686,7 @@ class UserReport:
                             new_reports.append (report)
 
         send_new_reports (new_reports)
-
-                        
+                
     @staticmethod
     def has_report_been_handled (hash):
         handled_path = os.path.join (data_dir, "handled_reports.txt")
@@ -699,7 +711,7 @@ class UserReport:
         target_id, target = lines[0].split(',')
         source_id, source = lines[1].split(',')
         date_str = lines[2].strip()
-        date = datetime.strptime(date_str, '%Y.%m.%d-%H.%M.%S')
+        date = date_str
         reason = lines[4].strip()
         text = lines[5].strip()
 
@@ -711,6 +723,10 @@ class UserReport:
 
         with open (handled_path, 'a') as file:
             file.write (hash + '\n')
+
+    @staticmethod 
+    def delete_report (hash):
+        raise NotImplementedError
     
     def __str__ (self):
         return f"Report(server={self.server}, target={self.target}, target_id={self.target_id}, source={self.source}, source_id={self.source_id}, date={self.date}, reason={self.reason}, text={self.text}, hash={self.hash})"
@@ -796,6 +812,66 @@ def register_web_server_error (e):
     print (f"Web Server Error: {e}")
     write_to_log ("Web Server", f"Web Server Error: {e}")
 
+def log_is_new_gamemode(line):
+    match = re.search(r'Map vote has concluded, travelling to (.+)', line)
+    if match: 
+        return match.group(1) if match else None
+
+def log_is_starting_gamemode (line):
+    match = re.search (r'LogLoad: LoadMap: /Game/SCPPandemic/Maps/([^/]+)/', line)
+    if match:
+        return match.group(1) if match else None
+    
+def log_is_session_creation (line):
+    match = re.search (r'Create session complete', line)
+    return bool (match)
+
+def log_is_entering_idle (line):
+    match = re.search (r'Entering Standby, going to standby map M_ServerDefault.', line)
+    return bool (match)
+
+def log_is_game_starting (line):
+    match = re.search (r'(Game|Gamemode) has started', line)
+    return match
+
+def log_is_player_joined (line):
+    match = re.search(r'Sending auth result to user (\d+)', line)
+    if match:
+        return match.group(1)
+    
+    return None
+
+def log_is_player_leave (line):
+    close_match = re.search(r'UNetConnection::Close: \[UNetConnection\] RemoteAddr: (\d+):', line)
+
+    if close_match:
+        return close_match.group(1)
+    
+    kick_match = re.search(r'Successfully kicked player (\d+)', line)
+
+    if (kick_match):
+        return kick_match.group(1)
+    
+    cleanup = re.search(r'LogNet: UChannel::CleanUp: ChIndex == \d+. Closing connection. \[UChannel\] ChIndex: \d+, Closing: \d+ \[UNetConnection\] RemoteAddr: (\d+):', line)
+
+    if cleanup:
+        return cleanup.group(1)
+    
+    return None
+
+def log_is_player_id(log_file_path):
+    steam_ids = set()
+
+    with open(log_file_path, 'r') as log_file:
+        for line in log_file:
+            matches = re.findall(r'\b\d{17}\b', line)
+            steam_ids.update(matches)
+
+    # Log the collected Steam IDs
+    print("All Steam IDs in the log file:")
+    for steam_id in steam_ids:
+        print(steam_id)
+
 
 def execute_server_start (server):
     get_server_from_name (server).execute_server_start()
@@ -865,25 +941,24 @@ def send_new_reports (reports):
         return
     
     report_dict = [
-    {
-        'target': report.target,
-        'target_id': report.target_id,
-        'source': report.source,
-        'source_id': report.source_id,
-        'date': report.date,
-        'reason': report.reason,
-        'text': report.text,
-        'hash': report.hash
-    }
-    for report in reports
+        {
+            'target': report.target,
+            'target_id': report.target_id,
+            'source': report.source,
+            'source_id': report.source_id,
+            'date': report.date,
+            'reason': report.reason,
+            'text': report.text,
+            'hash': report.hash
+        }
+        for report in reports
     ]
    
     config = read_global_config()
     json_data = json.dumps (report_dict)
     url = (f"http://{config['WebServer']['web_server_address']}:{config['WebServer']['web_server_port']}/receive_new_reports")
     try:
-        json_string = {"server_info": json_data}
-        response = requests.post(url, json=json_string)
+        response = requests.post(url, json=json_data)
     except requests.exceptions.ConnectionError as e:
         if check_web_server():
             register_web_server_error (f"Unknown Web Server Error. {e}")
@@ -1025,65 +1100,20 @@ def update_server_path_name (server):
 
         server_instance.update_server_path_name (server_new_name)
 
-def log_is_new_gamemode(line):
-    match = re.search(r'Map vote has concluded, travelling to (.+)', line)
-    if match: 
-        return match.group(1) if match else None
 
-def log_is_starting_gamemode (line):
-    match = re.search (r'LogLoad: LoadMap: /Game/SCPPandemic/Maps/([^/]+)/', line)
-    if match:
-        return match.group(1) if match else None
-    
-def log_is_session_creation (line):
-    match = re.search (r'Create session complete', line)
-    return bool (match)
+def add_to_global_ban_list (user_id):
+    banlist_dir = os.path.join (data_dir, "banlist.txt")
 
-def log_is_entering_idle (line):
-    match = re.search (r'Entering Standby, going to standby map M_ServerDefault.', line)
-    return bool (match)
+    with open (banlist_dir, 'a') as file:
+        file.write (user_id + '\n')
 
-def log_is_game_starting (line):
-    match = re.search (r'(Game|Gamemode) has started', line)
-    return match
+    update_server_banlists ()
 
-def log_is_player_joined (line):
-    match = re.search(r'Sending auth result to user (\d+)', line)
-    if match:
-        return match.group(1)
-    
-    return None
-
-def log_is_player_leave (line):
-    close_match = re.search(r'UNetConnection::Close: \[UNetConnection\] RemoteAddr: (\d+):', line)
-
-    if close_match:
-        return close_match.group(1)
-    
-    kick_match = re.search(r'Successfully kicked player (\d+)', line)
-
-    if (kick_match):
-        return kick_match.group(1)
-    
-    cleanup = re.search(r'LogNet: UChannel::CleanUp: ChIndex == \d+. Closing connection. \[UChannel\] ChIndex: \d+, Closing: \d+ \[UNetConnection\] RemoteAddr: (\d+):', line)
-
-    if cleanup:
-        return cleanup.group(1)
-    
-    return None
-
-def log_is_player_id(log_file_path):
-    steam_ids = set()
-
-    with open(log_file_path, 'r') as log_file:
-        for line in log_file:
-            matches = re.findall(r'\b\d{17}\b', line)
-            steam_ids.update(matches)
-
-    # Log the collected Steam IDs
-    print("All Steam IDs in the log file:")
-    for steam_id in steam_ids:
-        print(steam_id)
+def update_server_banlists ():
+    banlist = os.path.join (data_dir, "banlist.txt")
+    for server in servers:
+        server_banlist = os.path.join (server.saved_file_path, "BannedIDs.ini")
+        shutil.copyfile (banlist, server_banlist)
 
 def get_server_from_name (name):
     global servers
@@ -1093,6 +1123,7 @@ def get_server_from_name (name):
             return server
     
     return None
+
 
 def check_web_server ():
     global is_using_web_server
@@ -1147,6 +1178,7 @@ def start_wait_for_web_server_thread():
     global wait_for_web_server_thread
     if wait_for_web_server_thread == None:
         wait_for_web_server_thread = threading.Thread(target=wait_for_web_server, daemon=True).start()
+
 
 def write_to_log (server, content):
     current_datetime = datetime.now()
@@ -1248,7 +1280,6 @@ def generate_global_config ():
         new_config.write (config_file)
 
 
-
 def async_output_server_info():
     while True:
         time.sleep(10)  
@@ -1320,9 +1351,14 @@ def handle_client (client_socket, client_address):
         elif data_action == "create":
             formdata = request_data['formdata']
             create_server(formdata)
-        elif data_action == "handle_report":
-            report_hash = request_data['report_hash']
+        elif data_action == "read_report":
+            report_hash = request_data['hash']
             UserReport.handle_report (report_hash)
+        elif data_action == "delete_report":
+            report_hash = request_data['hash']
+            UserReport.delete_report (report_hash)
+        elif data_action == "ban":
+            user_id = request_data['user_id']
     except Exception as e:
         print (f"Error handling client {client_address}: {e}, {traceback.format_exc()}")
     finally:
@@ -1330,13 +1366,49 @@ def handle_client (client_socket, client_address):
 
 def main():
     global data_dir, config_dir, cache_dir
+
+    app_name = "Meshed Server Tool"
+    app_author = "Skomesh"
+
     data_dir = user_data_dir (app_name, app_author)
     config_dir = user_config_dir (app_name, app_author)
     cache_dir = user_cache_dir (app_name, app_author)
+    
+    """
+    path = data_dir
+
+    if os.path.exists(data_dir):
+        print ("Yes")
+    else:
+        print ("No")
+
+    try:
+        with open(os.path.join(path, 'test_file.tmp'), 'w') as f:
+            pass
+        print("Write permission is available")
+    except PermissionError:
+        print("Write permission is not available")
+
+    try:
+        os.makedirs(path, exist_ok=True)
+        print("Directory created successfully")
+    except PermissionError:
+        print("Permission denied")
+    except Exception as e:
+        print(f"Error occurred: {e}")
 
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(config_dir, exist_ok=True)
     os.makedirs(cache_dir, exist_ok=True)
+    """
+
+    print (data_dir)
+
+    os.makedirs ("C:\\Users\\Skomesh\\AppData\\SkomeshMeshServer")
+
+   #Path (data_dir).mkdir (parents=True, exist_ok=True)
+
+    return
 
     configs = get_all_server_paths()
     
@@ -1349,6 +1421,8 @@ def main():
     
     global_config = read_global_config()
     
+    UserReport.start_report_checking_thread()
+
     global web_server_online
     global is_using_web_server
 

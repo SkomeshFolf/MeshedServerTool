@@ -157,31 +157,10 @@ def get_gameplay_settings (server):
 def get_server_config_paths (server):
     action = 'get_server_config'
     server = server
-    payload = {
-        "action": action,
-        "server": server
-    }
-    payload_json = json.dumps (payload)
 
-    port = int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1
-    server_socket = ('127.0.0.1', port)
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            client_socket.connect(server_socket)
-            client_socket.sendall(payload_json.encode ('utf-8'))
-
-            response = b""
-            while True:
-                part = client_socket.recv(1024)
-                if not part:
-                    break
-                response += part
-    except Exception as e:
-        print (f"Error during socket communication in get_server_config_paths (). {e}")
-        return e 
+    response = send_server_control (action, server)
     
-    # Decode the response and convert it to a Python dictionary
-    response_data = json.loads(response.decode('utf-8'))
+    response_data = json.loads(response['response'].decode('utf-8'))
     
     return response_data
 
@@ -343,11 +322,13 @@ def receive_new_reports():
         for report in reports_data:
             new_reports.append (report)
 
+        return 'Sucess', 200
+
     except JSONDecodeError as e:
         return jsonify({'status': 'error', 'message': 'Invalid JSON data received'}), 400
     except Exception as e:
-            print(f"Error updating server info: {e}, {data}")
-            return 'Error updating server info', 500
+            print(f"Error receiving report info: {e}, {data}")
+            return 'Error receiving report info', 500
 
 @app.route('/stream_server_info')
 def stream_server_info():
@@ -409,6 +390,10 @@ def stream_new_reports ():
 def web_server_home ():
     return render_template('index.html', servers=get_servers(), logs=get_logs())
 
+@app.route('/reports')
+def web_server_reports ():
+    return render_template('user_reports.html', reports=new_reports)
+
 @app.route('/server/<server_name>')
 def web_server_server_page(server_name):
     server_info = get_servers()
@@ -452,18 +437,8 @@ def get_page_logs ():
 def control_server ():
     action = request.form.get("action")
     server = request.form.get("server")
-    payload = {
-        "action": action,
-        "server": server
-    }
-    payload_json = json.dumps (payload)
-
-    server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        client_socket.connect(server_socket)
-        client_socket.sendall(payload_json.encode ('utf-8'))
-
-    return "", 204
+    response = send_server_control (action, server)
+    return jsonify (response['message']), response['status']
 
 @app.route('/server/<server_name>/request_management_settings', methods=['POST'])
 def request_management_settings(server_name):
@@ -517,31 +492,75 @@ def submit_gameplay_settings (server_name):
 def submit_new_server():
     settings = request.get_json()
 
-    try:
-        action = "create"
-        server = settings.get ("server_name")
-        port = read_global_config()['WebServer']['web_server_port']
+    action = "create"
+    server = settings.get ("server_name")
+    formdata = settings
 
-        payload = {
-            "action": action,
-            "server": server,
-            "formdata": settings
-        }
-        payload_json = json.dumps (payload)
+    response = send_server_control (action, server, formdata=settings)
+    return jsonify (response['message']), response['status']
+    
+@app.route ('/reports/ban', methods=['POST'])
+def reports_ban_user():
+    try: 
+        data = request.get_data(as_text=True)
+        response = send_server_control ("ban", None, user_id=data)
+        return jsonify (response['message']), response['status']
 
-        if len(payload_json) > 4096:  # Adjust buffer size as needed
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
+
+@app.route ('/reports/delete', methods=['POST'])
+def reports_delete_report ():
+    try: 
+        data = request.get_data (as_text=True)
+        response = send_server_control ("delete_report", None, hash=data)
+        return jsonify (response['message']), response['status']
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
+
+@app.route ('/reports/read', methods=['POST'])
+def reports_read_report ():
+    try: 
+        data = request.get_data (as_text=True)
+        response = send_server_control ("read_report", None, hash=data)
+        return jsonify (response['message']), response['status']
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
+
+
+def send_server_control (action, server=None, **kwargs):
+    
+    payload = {
+        "action": action
+    }
+
+    if server is not None:
+        payload['server'] = server
+
+    payload.update (kwargs)
+
+    payload_json = json.dumps (payload)
+    
+    if len(payload_json) > 4096:  # Adjust buffer size as needed
             raise ValueError("Data too large to send")
 
-        server_socket = ('127.0.0.1', int (port) + 1)
+    server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
+
+    try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
             client_socket.connect(server_socket)
             client_socket.sendall(payload_json.encode ('utf-8'))
-
-        #print (get_server_config_paths (server))
-
-        return jsonify ({'status' : 'success'}), 200
+            response = b""
+            while True:
+                part = client_socket.recv(1024)
+                if not part:
+                    break
+                response += part
+            return {"status": 200, "message": "Success", "response": response}
+    except socket.error as e:
+        return {"status": 500, "message": f"Socket error: {e}"}
     except Exception as e:
-        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
+        return {"status": 500, "message": f"Unexpected error {e}"}
 
 def read_global_config ():
     if os.path.exists ("config.ini"):    
