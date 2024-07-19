@@ -14,6 +14,9 @@ import time
 import MeshServer
 from MeshServer import ServerInfo, UserReport
 import platformdirs
+import logging
+import platform
+import waitress
 
 app = Flask(__name__)
 CORS(app)
@@ -65,8 +68,15 @@ def read_log_pages (page_size=10):
     global app_name, app_author
     line_count = 0
 
-    with open(os.path.join (platformdirs.user_log_dir(app_name, app_author)), 'r') as file:
-        line_count = sum(1 for _ in file)
+    try:
+        with open(os.path.join (platformdirs.user_log_dir(app_name, app_author), "log.txt"), 'r') as file:
+            line_count = sum(1 for _ in file)
+    except PermissionError as e:
+        print ("Permission error accessing logs")
+    except FileNotFoundError as e:
+        print ("FileNotFound error accessing logs")
+    except Exception as e:
+        print (e)
 
     return math.ceil (line_count / page_size)
     
@@ -82,7 +92,6 @@ def get_management_settings (server):
         for key, value in config.items (section):
             config_dict[section][key] = value
 
-    print (config_dict)
     return config_dict
 
 def get_players_settings (server):
@@ -225,7 +234,6 @@ def apply_server_settings (server, settings):
             server_config = saved_path + f'/Config/ServerConfig.ini'
 
         data = settings
-        print (data)
 
         config = configparser.ConfigParser()
         config.read (server_config)
@@ -447,7 +455,6 @@ def get_page_logs ():
     data = request.get_json()
     page = data.get ("page")
     page_size = data.get ("page_size")
-    print (f"Getting pages {page} {page_size} making {page * page_size}")
     return jsonify (get_logs (line_count=page_size, start_range=((page - 1) * page_size)))
 
 @app.route ('/control_server', methods=['POST'])
@@ -543,7 +550,6 @@ def reports_read_report ():
         data = request.get_data (as_text=True)
         response = send_server_control ("read_report", None, hash=data)
         new_reports = [obj for obj in new_reports if obj['hash'] != data]
-        print (new_reports)
         return jsonify (response['message']), response['status']
     except Exception as e:
         return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
@@ -589,15 +595,15 @@ def read_global_config ():
     else:
         return None
 
-#@app.route('/user_reports')
-#def web_server_user_reports():
-#    user_reports_data = {'report1': 'User report 1', 'report2': 'User report 2'}
-#    return render_template('user_reports.html', user_reports=user_reports_data)
-
 def main ():
-    config = read_global_config()
-    #web_port = int(config['WebServer']['port'])
-    app.run(debug=True, host='127.0.0.1')
+    os_name = platform.system ()
+    if os_name == "Windows":
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger('waitress')
+        logger.setLevel (logging.INFO)
+        waitress.serve (app, listen='127.0.0.1:5000', threads=8)
+    else:
+        app.run(debug=False, host='127.0.0.1')
 
 if __name__ == '__main__':
     main()
