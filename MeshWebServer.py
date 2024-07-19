@@ -13,6 +13,7 @@ import re
 import time
 import MeshServer
 from MeshServer import ServerInfo, UserReport
+import platformdirs
 
 app = Flask(__name__)
 CORS(app)
@@ -20,6 +21,8 @@ CORS(app)
 app.config['servers'] = {}
 app.config['lock'] = threading.Lock()
 
+app_name = "Meshed Server Tool"
+app_author = "Skomesh"
 new_reports = []
 
 def get_servers():
@@ -29,8 +32,10 @@ def get_servers():
         return g.servers
 
 def get_logs(line_count=10, start_range=0, server=None):
+    global app_name, app_author
+
     output_lines = None
-    with open ('log.txt', 'r') as logs:
+    with open (os.path.join (platformdirs.user_log_dir(app_name, app_author), "log.txt"), 'r') as logs:
         all_lines = logs.readlines()
         if server:
             all_the_server_logs = []
@@ -57,9 +62,10 @@ def get_logs(line_count=10, start_range=0, server=None):
         return []
 
 def read_log_pages (page_size=10):
+    global app_name, app_author
     line_count = 0
 
-    with open("log.txt", 'r') as file:
+    with open(os.path.join (platformdirs.user_log_dir(app_name, app_author)), 'r') as file:
         line_count = sum(1 for _ in file)
 
     return math.ceil (line_count / page_size)
@@ -375,6 +381,17 @@ def stream_server_logs(server_name):
                 time.sleep (2)
     return Response(generate(), mimetype='text/event-stream')
 
+@app.route ('/stream_new_reports_quantity')
+def stream_new_reports_quantity ():
+    def generate():
+        with app.app_context():
+            while True:
+                global new_reports
+                yield f"data: {json.dumps(len (new_reports))}\n\n"
+
+                time.sleep (3)
+    return Response (generate(), mimetype='text/event-stream')
+
 @app.route ('/stream_new_reports')
 def stream_new_reports ():
     def generate():
@@ -383,7 +400,7 @@ def stream_new_reports ():
                 global new_reports
                 yield f"data: {json.dumps(new_reports)}\n\n"
 
-                time.sleep (10)
+                time.sleep (7)
     return Response (generate(), mimetype='text/event-stream')
 
 @app.route('/')
@@ -520,9 +537,13 @@ def reports_delete_report ():
 
 @app.route ('/reports/read', methods=['POST'])
 def reports_read_report ():
+    global new_reports
+
     try: 
         data = request.get_data (as_text=True)
         response = send_server_control ("read_report", None, hash=data)
+        new_reports = [obj for obj in new_reports if obj['hash'] != data]
+        print (new_reports)
         return jsonify (response['message']), response['status']
     except Exception as e:
         return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
@@ -531,11 +552,9 @@ def reports_read_report ():
 def send_server_control (action, server=None, **kwargs):
     
     payload = {
-        "action": action
+        "action": action,
+        "server": server
     }
-
-    if server is not None:
-        payload['server'] = server
 
     payload.update (kwargs)
 
@@ -544,7 +563,7 @@ def send_server_control (action, server=None, **kwargs):
     if len(payload_json) > 4096:  # Adjust buffer size as needed
             raise ValueError("Data too large to send")
 
-    server_socket = ('127.0.0.1', int (MeshServer.read_global_config()['WebServer']['web_server_port']) + 1)
+    server_socket = ('127.0.0.1', int (MeshServer.get_global_config()['WebServer']['web_server_port']) + 1)
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:

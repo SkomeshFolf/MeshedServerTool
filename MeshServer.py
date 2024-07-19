@@ -125,7 +125,7 @@ import shutil
 import socket
 import traceback
 import hashlib
-from platformdirs import user_data_dir, user_config_dir, user_cache_dir
+import platformdirs
 
 class OSErrorDetectionError (Exception):
     def __init__ (self, message="Either unable to detect the current OS or current OS is not supported."):
@@ -663,7 +663,7 @@ class UserReport:
         time.sleep (5)
         while True:
             UserReport.search_directories ()
-            time.sleep (60)
+            time.sleep (45)
 
     @staticmethod
     def search_directories ():
@@ -741,6 +741,9 @@ main_log_file = None
 is_using_web_server = False
 web_server_online = False
 wait_for_web_server_thread = None
+
+web_server_address = None
+web_server_port = None
 
 def register_player_join (server, player):
     print (f"Player {player} has joined {server}")
@@ -886,8 +889,7 @@ def execute_server_kill (server):
 
 
 def send_server_info ():
-    global server_info
-    global web_server_address
+    global server_info, web_server_port, web_server_address
     
     # Check web server status, return if offline, not found or not used.
     if not check_web_server():
@@ -911,7 +913,7 @@ def send_server_info ():
     ]
     config = read_global_config()
     json_data = json.dumps (server_info_dicts)
-    url = (f"http://{config['WebServer']['web_server_address']}:{config['WebServer']['web_server_port']}/update_server_info")
+    url = (f"http://{web_server_address}:{web_server_port}/update_server_info")
     try:
         json_string = {"server_info": json_data}
         response = requests.post(url, json=json_string)
@@ -931,8 +933,7 @@ def send_server_info ():
             return
 
 def send_new_reports (reports):
-    global server_info
-    global web_server_address
+    global server_info, web_server_port, web_server_address
     
     # Check web server status, return if offline, not found or not used.
     if not check_web_server():
@@ -953,9 +954,8 @@ def send_new_reports (reports):
         for report in reports
     ]
    
-    config = read_global_config()
     json_data = json.dumps (report_dict)
-    url = (f"http://{config['WebServer']['web_server_address']}:{config['WebServer']['web_server_port']}/receive_new_reports")
+    url = (f"http://{web_server_address}:{web_server_port}/receive_new_reports")
     try:
         response = requests.post(url, json=json_data)
     except requests.exceptions.ConnectionError as e:
@@ -982,44 +982,46 @@ def begin_server (name):
     server_instance.init_server()
 
 def create_server (formdata):
-    global server_info, servers
+    global server_info, servers, data_dir
 
     server_name = formdata.get ('server_name')
-    server_name_dir = "Server_" + server_name
+    server_name_dir = os.path.join (data_dir, f"Server_{server_name}")
 
     try:
-        os.makedirs (f"Server_{server_name}")
+        os.makedirs (server_name_dir)
     except Exception as e:
         return e
 
-    generate_config (f"Server_{server_name}/config.ini")
+    config_dir = os.path.join (data_dir, f"Server_{server_name}", "config.ini")
+
+    generate_config (config_dir)
 
     try:
         config = configparser.ConfigParser()
-        config.read (f"Server_{server_name}/config.ini")
+        config.read (config_dir)
 
         for key, value in formdata.items():
             if config.has_option ('General', key):
                 config.set ('General', key, str(value))
 
-        with open(f"Server_{server_name}/config.ini", 'w') as configfile:
+        with open(config_dir, 'w') as configfile:
             config.write(configfile)
     except Exception as e:
         return e
 
     server_info_instance = ServerInfo (server_name)
-    server_instance = Server(server_name, server_name_dir + "/config.ini", server_info_instance)
+    server_instance = Server(server_name, config_dir, server_info_instance)
     servers.append (server_instance)
     server_info.append (server_info_instance)
     server_instance.create_server(formdata.get('shared_install_dir'))
 
-    config = read_config (server_name_dir + "/config.ini")
+    config = read_config (config_dir)
     saved_path = config['General']['saved_path_dont_touch']
 
     if formdata.get ('shared_install_dir'):
-        server_config = saved_path + f"/Config/{server_name}.ini"
+        server_config = os.path.join (saved_path, "Config", f"{server_name}.ini")
     else:
-        server_config = saved_path + f"/Config/ServerConfig.ini"
+        server_config = os.path.join (saved_path, "Config", "ServerConfig.ini")
 
     try:
         config = configparser.ConfigParser()
@@ -1074,7 +1076,7 @@ def format_gameplay_config (config_dict):
     return f'({config_str})'
 
 def update_server_path_name (server):
-    global server_info, servers
+    global server_info, servers, data_dir
 
     server_instance = get_server_from_name (server)
     server_instance.read_server_config()
@@ -1084,8 +1086,8 @@ def update_server_path_name (server):
     if server is not server_new_name:
         server_instance.server_info.server_name = server_new_name
 
-        old_path = f"{server}"
-        new_path = f"Server_{server_new_name}"
+        old_path = os.path.join (data_dir, f"{server}")
+        new_path = os.path.join (data_dir, f"Server_{server_new_name}")
 
         try:
             os.rename (old_path, new_path)
@@ -1101,6 +1103,9 @@ def update_server_path_name (server):
 
 
 def add_to_global_ban_list (user_id):
+    global data_dir
+
+    print ("Bannign user " + user_id)
     banlist_dir = os.path.join (data_dir, "banlist.txt")
 
     with open (banlist_dir, 'a') as file:
@@ -1146,13 +1151,15 @@ def check_web_server ():
         return False
     
 def ping_web_server ():
+    global web_server_address, web_server_port
+    
     config = read_global_config()
 
     if not config['WebServer']['web_server_enabled']:
         return False
 
     try:
-        response = requests.get(f"http://{config['WebServer']['web_server_address']}:{config['WebServer']['web_server_port']}")
+        response = requests.get(f"http://{web_server_address}:{web_server_port}")
         if response.status_code // 100 == 2:
             return True
         else:
@@ -1180,33 +1187,42 @@ def start_wait_for_web_server_thread():
 
 
 def write_to_log (server, content):
+    global log_dir
+
+    log_file = os.path.join (log_dir, "log.txt")
+
     current_datetime = datetime.now()
-    formatted_datetime = current_datetime.strftime("%d-%m-%Y %H.%M.%S")
-    with open("log.txt", 'a') as log_file:
-        log_file.write(f"\n[{formatted_datetime}] {server} - {content}")
+    formatted_datetime = current_datetime.strftime("%d-%m-%Y %Hh%M")
+    with open(log_file, 'a') as log:
+        log.write(f"\n[{formatted_datetime}] {server} - {content}")
 
 def create_log_file():
+    global log_dir
+
+    log_file = os.path.join (log_dir, "log.txt")
     current_datetime = datetime.now()
-    formatted_datetime = current_datetime.strftime("%d-%m-%Y %H_%M_%S")
-    if not os.path.exists("log.txt"):
-        with open("log.txt", 'w') as log_file:
-            log_file.write(f"[Start of log file: {formatted_datetime}]\n")
+    formatted_datetime = current_datetime.strftime("%d-%m-%Y %Hh%M")
+    if not os.path.exists(log_file):
+        with open(log_file, 'w') as log:
+            log.write(f"[Start of log file: {formatted_datetime}]\n")
     else:
         save_log_file()
-        with open("log.txt", 'w') as log_file:
-            log_file.write(f"[Start of log file: {formatted_datetime}]\n")
+        with open(log_file, 'w') as log:
+            log.write(f"[Start of log file: {formatted_datetime}]\n")
 
 def save_log_file():
-    if not os.path.exists("Logs"):
-        os.makedirs("Logs")
+    global log_dir
 
     current_datetime = datetime.now()
-    formatted_datetime = current_datetime.strftime("%d_%m_%Y-%H.%M.%S")
+    formatted_datetime = current_datetime.strftime("%d_%m_%Y-%Hh%M")
 
-    shutil.move("log.txt", f"Logs/log_{formatted_datetime}.txt")
+    log_file = os.path.join (log_dir, "log.txt")
+    log_save_log = os.path.join (log_dir, f"log_{formatted_datetime}.txt")
 
-    with open("log.txt", 'w') as log_file:
-        log_file.write("")    
+    shutil.move(log_file, log_save_log)
+
+    with open(log_file, 'w') as log:
+        log.write("")
 
 def read_config(config_file_path):
     if not os.path.isfile (config_file_path):
@@ -1217,9 +1233,12 @@ def read_config(config_file_path):
     return config
 
 def get_all_server_paths():
+    global data_dir
+
     configs = []
+
     # Find all server folders
-    server_folders = [folder for folder in os.listdir() if os.path.isdir(folder) and folder.startswith("Server_")]
+    server_folders = [folder for folder in os.listdir(data_dir) if os.path.isdir(folder) and folder.startswith("Server_")]
 
     for folder in server_folders:
         config_file_path = os.path.join(folder, 'config.ini')
@@ -1253,16 +1272,36 @@ def generate_config(config_file_path):
         newConfig.write(config_file)
 
     print ("Creating config at " + config_file_path)
-        
-def read_global_config ():
-    if not os.path.exists ("config.ini"):
+
+@staticmethod
+def get_global_config ():
+    config_dir = platformdirs.user_config_dir ("Meshed Server Tool", "Skomesh")
+
+    config_file = os.path.join (config_dir, "config.ini")
+
+    if not os.path.exists (config_file):
         generate_global_config ()
     
     config = configparser.ConfigParser()
-    config.read ("config.ini")
+    config.read (config_file)
+
+    return config
+
+def read_global_config ():
+    global web_server_address, web_server_port
+
+    config = get_global_config ()
+
+    web_server_address = config['WebServer']['web_server_address']
+    web_server_port = config['WebServer']['web_server_port']
+
     return config
     
 def generate_global_config ():
+    global config_dir
+
+    config_file = os.path.join (config_dir, "config.ini")
+
     new_config = configparser.ConfigParser()
     new_config['WebServer'] = {
         'web_server_enabled': True,
@@ -1275,36 +1314,15 @@ def generate_global_config ():
     new_config['MOTD'] = {
         'global_server_motd': ''
     }
-    with open ("config.ini", 'w') as config_file:
-        new_config.write (config_file)
-
-
-def async_output_server_info():
-    while True:
-        time.sleep(10)  
-        #os.system('cls' if os.name == 'nt' else 'clear')  # Clear console
-        output_server_info()
-
-def output_server_info():
-    global servers
-
-    for server in servers:
-        server_info = server.server_info
-        print(f"{server.name}")
-        print(f"\tStatus: {server_info.server_status}")
-        print(f"\tConnected Users: {server_info.current_users}")
-        print(f"\tNumber of Users: {len(server_info.joined_users) - len(server_info.disconnected_users)}")
-        print(f"\tTotal User Joins: {server_info.total_user_joins}")
-        print(f"\tTotal User Disconnects: {server_info.total_user_disconnects}")
-        print(f"\tCurrent Gamemode: {server_info.previous_gamemode}")
-        print(f"\tGamemode Changes: {server_info.gamemode_changes}")
-        print(f"\tServer Restarts: {server_info.server_restarts}")
-        print()
+    with open (config_file, 'w') as config:
+        new_config.write (config)
 
 
 def init_sockets ():
+    global web_server_address, web_server_port
+
     server_socket = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind (('127.0.0.1', int (read_global_config()['WebServer']['web_server_port']) + 1))
+    server_socket.bind ((web_server_address, int (web_server_port) + 1))
     server_socket.listen(2)
 
     threading.Thread(target=listen_for_clients, args=(server_socket,)).start()
@@ -1358,19 +1376,21 @@ def handle_client (client_socket, client_address):
             UserReport.delete_report (report_hash)
         elif data_action == "ban":
             user_id = request_data['user_id']
+            add_to_global_ban_list (user_id)
     except Exception as e:
         print (f"Error handling client {client_address}: {e}, {traceback.format_exc()}")
     finally:
         client_socket.close()
 
 def main():
-    global data_dir, config_dir
+    global data_dir, config_dir, log_dir
 
     app_name = "Meshed Server Tool"
     app_author = "Skomesh"
 
-    data_dir = user_data_dir (app_name, app_author, ensure_exists=True)
-    config_dir = user_config_dir (app_name, app_author, ensure_exists=True)
+    data_dir = platformdirs.user_data_dir (app_name, app_author, ensure_exists=True)
+    config_dir = platformdirs.user_config_dir (app_name, app_author, ensure_exists=True)
+    log_dir = platformdirs.user_log_dir (app_name, app_author, ensure_exists=True)
 
     configs = get_all_server_paths()
     

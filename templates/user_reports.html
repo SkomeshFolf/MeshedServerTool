@@ -12,6 +12,7 @@
             reports = loadReports();
             addAllReports();
             initRespondButtons();
+            initLiveReportStream();
             $("#respondReportBtn").prop('disabled', true);
         });
         function addAllReports ()
@@ -31,7 +32,8 @@
         function displayReportDetails (index)
         {
             selectedReport = reports[index];
-            if (selectedReport) {
+            if (selectedReport) 
+            {
                 $('#reportTarget').text(`${selectedReport.target} (${selectedReport.target_id})`);
                 $('#reportSource').text(`${selectedReport.source} (${selectedReport.source_id})`);
                 $('#reportDate').text(formatDateTime (selectedReport.date));
@@ -39,8 +41,19 @@
                 $('#reportText').text(selectedReport.text);
                 $('#reportHash').text(selectedReport.hash);
                 $('#modalUsername').text(`${selectedReport.target} (${selectedReport.target_id})`);
+                $("#respondReportBtn").prop('disabled', false);
             }
-            $("#respondReportBtn").prop('disabled', false);
+            else
+            {
+                $('#reportTarget').text('Click on a new report to view');
+                $('#reportSource').text('Click on a new report to view');
+                $('#reportDate').text('Click on a new report to view');
+                $('#reportReason').text('Click on a new report to view');
+                $('#reportText').text('Click on a new report to view');
+                $('#reportHash').text('N/A');
+                $('#modalUsername').text(`${selectedReport.target} (${selectedReport.target_id})`);
+                $("#respondReportBtn").prop('disabled', true);
+            }
         }
         function formatDateTime(dateTime) {
             // Split the input into date and time components
@@ -100,13 +113,17 @@
             });
             */
             $("#readReportBtn").click (function () {
+                $("#respondReportBtn").prop('disabled', true);
+                reports = reports.filter (obj => obj.hash !== selectedReport['hash']);
+                addAllReports();
+                console.log (reports);
                 $.ajax({
                     url: "/reports/read",
                     type: 'POST',
                     contentType: 'text/plain',
                     data: selectedReport['hash'],
                     success: function(response) {
-                        createAlertToast ("Success", "Report marked as read.")
+                        createAlertToast ("Success", "Report marked as read.");
                     },
                     error: function(xhr, status, error) {
                         createAlertToast ("Error", "Communication error or error deleting report." + error);
@@ -147,7 +164,7 @@
         function updateNewReports (event)
         {
             reports = [];
-            var reports = JSON.parse (event.data);
+            reports = JSON.parse (event.data);
 
             addAllReports();
         }
@@ -219,7 +236,7 @@
                 <div class="modal-footer">
                     <div class="d-flex justify-content-between flex-row-reverse">
                         <button type="button" id="deleteReportBtn" class="btn btn-warning d-none">Delete Report</button>
-                        <button type="button" id="readReportBtn" class="btn btn-success">Mark as Read</button>
+                        <button type="button" id="readReportBtn" class="btn btn-success" data-bs-dismiss="modal" aria-label="Close">Mark as Read</button>
                     </div>
                 </div>
             </div>

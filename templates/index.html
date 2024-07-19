@@ -14,16 +14,16 @@
                 
                 // Update status badge
                 var badge_class = {
-                    'Creating': 'badge-info',
-                    'Offline': 'badge-secondary',
-                    'Crashed': 'badge-danger',
-                    'Suspended': 'badge-info',
-                    'Stopping': 'badge-warning',
-                    'Waking': 'badge-info',
-                    'Starting': 'badge-warning',
-                    'Restarting': 'badge-warning',
-                    'Idle': 'badge-secondary',
-                    'Active': 'badge-success'
+                    'Creating': 'bg-info',
+                    'Offline': 'bg-secondary',
+                    'Crashed': 'bg-danger',
+                    'Suspended': 'bg-info',
+                    'Stopping': 'bg-warning',
+                    'Waking': 'bg-info',
+                    'Starting': 'bg-warning',
+                    'Restarting': 'bg-warning',
+                    'Idle': 'bg-secondary',
+                    'Active': 'bg-success'
                 }[server.server_status];
 
                 $('#' + server.server_name + '-status-badge').removeClass().addClass('badge ' + badge_class).text('Status: ' + server.server_status);
