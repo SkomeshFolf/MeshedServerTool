@@ -67,7 +67,7 @@ class Server:
         self.update_config_settings()
     
     def update_config_settings (self):
-        self.server_name = self.config['General']['server_name']
+        self.name = self.config['General']['server_name']
         self.install_dir = self.config['General']['install_dir']
         self.shared_dir = ast.literal_eval (self.config['General']['shared_install_dir'])
         self.max_reloads = int(self.config['General']['max_reloads'])
@@ -101,14 +101,14 @@ class Server:
         os_name = platform.system ()
         if os_name == "Windows":
             if self.shared_dir:
-                self.log_file_path = os.path.join(self.install_dir, 'WindowsServer', 'Pandemic', 'Saved', 'Logs', self.server_name, f'{self.server_name}.log')
+                self.log_file_path = os.path.join(self.install_dir, 'WindowsServer', 'Pandemic', 'Saved', 'Logs', self.name, f'{self.name}.log')
             else:
                 self.log_file_path = os.path.join(self.install_dir, 'WindowsServer', 'Pandemic', 'Saved', 'Logs', 'Pandemic.log')
             self.saved_file_path = os.path.join(self.install_dir, 'WindowsServer', 'Pandemic', 'Saved')
             self.server_executable = os.path.join(self.install_dir, 'WindowsServer', 'PandemicServer.exe')
         elif os_name == "Linux":
             if self.shared_dir:
-                self.log_file_path = os.path.join(self.install_dir, 'LinuxServer', 'Pandemic', 'Saved', 'Logs', self.server_name, f'{self.server_name}.log')
+                self.log_file_path = os.path.join(self.install_dir, 'LinuxServer', 'Pandemic', 'Saved', 'Logs', self.name, f'{self.name}.log')
             else:
                 self.log_file_path = os.path.join(self.install_dir, 'LinuxServer', 'Pandemic', 'Saved', 'Logs', 'Pandemic.log')
             self.saved_file_path = os.path.join(self.install_dir, 'LinuxServer', 'Pandemic', 'Saved')
@@ -136,7 +136,7 @@ class Server:
         path_valid = False
 
         while not path_valid:
-            print (f"{self.server_name} could not find server at {self.install_dir}. Please update config with the server\'s root. Will retry in 10 seconds.")
+            print (f"{self.name} could not find server at {self.install_dir}. Please update config with the server\'s root. Will retry in 10 seconds.")
             
             self.read_server_config()
             path_valid = self.check_if_valid_install_dir()
@@ -158,17 +158,27 @@ class Server:
         
     def launch_server (self):
         if not self.server_process:
+            if self.shared_dir:
+                server_config = os.path.join (self.saved_file_path, "Config", f"{self.name}.ini")
+            else:
+                server_config = os.path.join (self.saved_file_path, "Config", "ServerConfig.ini")
+            
+            config = configparser.ConfigParser ()
+            config.read (server_config)
+
+            server_name = config['/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C']['servername']
+
             essential_server_args = [
                 self.starting_gamemode,
                 '-log',
                 f"-port={self.port}",
                 f"-queryport={self.query_port}",
-                f"-SteamServerName={self.server_name}"
+                f"-SteamServerName={server_name}"
             ]
 
             if self.shared_dir:
-                essential_server_args.append (f"-Log={self.server_name}/{self.server_name}.log")
-                essential_server_args.append (f"-ConfigFileName={self.server_name}.ini")
+                essential_server_args.append (f"-Log={self.name}/{self.name}.log")
+                essential_server_args.append (f"-ConfigFileName={self.name}.ini")
 
             server_args_raw = self.server_args
             server_args = essential_server_args + server_args_raw.split(',')
@@ -181,8 +191,8 @@ class Server:
         if shared_dir:
             server_args_raw = [
                 "-log",
-                f"-Log={self.server_name}/{self.server_name}.log",
-                f"-ConfigFileName={self.server_name}.ini"
+                f"-Log={self.name}/{self.name}.log",
+                f"-ConfigFileName={self.name}.ini"
             ]
         else:
             server_args_raw = [
