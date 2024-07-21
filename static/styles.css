@@ -32,3 +32,7 @@ li {
 .list-group-item:hover {
 	background-color: #f8f9fa;
 }
+
+.server_values {
+	font-family: 'Courier New', Courier, monospace;
+}

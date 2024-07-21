@@ -22,11 +22,11 @@ app = Flask(__name__)
 CORS(app)
 
 app.config['servers'] = {}
+app.config['new_reports'] = []
 app.config['lock'] = threading.Lock()
 
 app_name = "Meshed Server Tool"
 app_author = "Skomesh"
-new_reports = []
 
 def get_servers():
     with app.app_context():
@@ -38,19 +38,26 @@ def get_logs(line_count=10, start_range=0, server=None):
     global app_name, app_author
 
     output_lines = None
-    with open (os.path.join (platformdirs.user_log_dir(app_name, app_author), "log.txt"), 'r') as logs:
-        all_lines = logs.readlines()
-        if server:
-            all_the_server_logs = []
-            for log in all_lines:
-                match = re.match(r'\[(.*?)\] (.*?) - (.*)', log)
-                if match:
-                    timestamp, server_name, log_message = match.groups()
-                    if server_name == server:
-                        all_the_server_logs.append(log)
-            output_lines = all_the_server_logs
-        else:
-            output_lines = all_lines 
+    try:
+        with open (os.path.join (platformdirs.user_log_dir(app_name, app_author, ensure_exists=True), "log.txt"), 'r') as logs:
+            all_lines = logs.readlines()
+            if server:
+                all_the_server_logs = []
+                for log in all_lines:
+                    match = re.match(r'\[(.*?)\] (.*?) - (.*)', log)
+                    if match:
+                        timestamp, server_name, log_message = match.groups()
+                        if server_name == server:
+                            all_the_server_logs.append(log)
+                output_lines = all_the_server_logs
+            else:
+                output_lines = all_lines 
+    except PermissionError as e:
+        print ("Permission error accessing logs")
+    except FileNotFoundError as e:
+        print ("FileNotFound error accessing logs. Is the server manager running?")
+    except Exception as e:
+        print (e)
     
     if output_lines:
         if start_range >= len(output_lines):
@@ -69,7 +76,7 @@ def read_log_pages (page_size=10):
     line_count = 0
 
     try:
-        with open(os.path.join (platformdirs.user_log_dir(app_name, app_author), "log.txt"), 'r') as file:
+        with open(os.path.join (platformdirs.user_log_dir(app_name, app_author, ensure_exists=True), "log.txt"), 'r') as file:
             line_count = sum(1 for _ in file)
     except PermissionError as e:
         print ("Permission error accessing logs")
@@ -82,6 +89,34 @@ def read_log_pages (page_size=10):
     
 def get_lock():
     return app.config['lock']
+
+def get_game_server_config (server):
+    server_config = get_game_server_config_paths (server)
+
+    config = configparser.ConfigParser()
+    config.read (server_config)
+
+    return config
+
+def get_game_server_config_from_path (server_path):
+    config = configparser.ConfigParser()
+    config.read (server_path)
+
+    return config
+
+def get_game_server_config_paths (server):
+    path = get_server_config_paths (server)
+    config = MeshServer.read_config (path)
+
+    saved_path = config['General']['saved_path_dont_touch']
+    shared_dir = config['General']['shared_install_dir']
+
+    if shared_dir == "True":
+        server_config = os.path.join (saved_path, 'Config', f"{server}.ini")
+    else:
+        server_config = os.path.join (saved_path, 'Config', 'ServerConfig.ini')
+
+    return server_config
 
 def get_management_settings (server):
     path = get_server_config_paths (server)
@@ -102,15 +137,15 @@ def get_players_settings (server):
     owner_list = []
     whitelist_list = []
 
-    with open (saved_path + '/AdminIDs.ini', 'r') as file:
+    with open (os.path.join (saved_path, 'AdminIDs.ini'), 'r') as file:
         for line in file:
             admin_list.append (line.strip())
     
-    with open (saved_path + '/OwnerIDs.ini', 'r') as file:
+    with open (os.path.join (saved_path, 'OwnerIDs.ini'), 'r') as file:
         for line in file:
             owner_list.append (line.strip())
     
-    with open (saved_path + '/WhitelistIDs.ini', 'r') as file:
+    with open (os.path.join (saved_path, 'WhitelistIDs.ini'), 'r') as file:
         for line in file:
             whitelist_list.append (line.strip())
 
@@ -124,16 +159,7 @@ def get_players_settings (server):
     return players_dict
 
 def get_server_settings (server):
-    path = get_server_config_paths (server)
-    config = MeshServer.read_config (path)
-    saved_path = config['General']['saved_path_dont_touch']
-    shared_dir = config['General']['shared_install_dir']
-    if shared_dir == 'True':
-        server_config = saved_path + f'/Config/{server}.ini'
-    else:
-        server_config = saved_path + f'/Config/ServerConfig.ini'
-    config = configparser.ConfigParser()
-    config.read (server_config)
+    config = get_game_server_config (server)
     config_dict = {}
 
     for option in config['/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C']:
@@ -145,18 +171,7 @@ def get_server_settings (server):
     return config_dict
 
 def get_gameplay_settings (server):
-    path = get_server_config_paths (server)
-    config = MeshServer.read_config (path)
-
-    saved_path = config['General']['saved_path_dont_touch']
-    shared_dir = config['General']['shared_install_dir']
-    if shared_dir == 'True':
-        server_config = saved_path + f'/Config/{server}.ini'
-    else:
-        server_config = saved_path + f'/Config/ServerConfig.ini'
-
-    config = configparser.ConfigParser()
-    config.read (server_config)
+    config = get_game_server_config (server)
 
     gameplay_settings_raw = config['/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C']['GameplayConfig']
     gameplay_settings = gameplay_settings_raw.replace('(', '').replace(')', '').split(',')
@@ -205,15 +220,15 @@ def apply_players_settings (server, settings):
         owners = settings.get ('owners', [])
         whitelist = settings.get ('whitelist', [])
 
-        with open (saved_path + '/AdminIDs.ini', 'w') as file:
+        with open (os.path.join (saved_path, 'AdminIDs.ini'), 'w') as file:
             for player in admins:
                 file.write (player + '\n')
 
-        with open (saved_path + '/OwnerIDs.ini', 'w') as file:
+        with open (os.path.join (saved_path, 'OwnerIDs.ini'), 'w') as file:
             for player in owners:
                 file.write (player + '\n')
 
-        with open (saved_path + '/WhitelistIDs.ini', 'w') as file:
+        with open (os.path.join (saved_path, 'WhitelistIDs.ini'), 'w') as file:
             for player in whitelist:
                 file.write (player + '\n')
 
@@ -223,25 +238,15 @@ def apply_players_settings (server, settings):
 
 def apply_server_settings (server, settings):
     try:
-        path = get_server_config_paths (server)
-        config = MeshServer.read_config (path)
-
-        saved_path = config['General']['saved_path_dont_touch']
-        shared_dir = config['General']['shared_install_dir']
-        if shared_dir:
-            server_config = saved_path + f'/Config/{server}.ini'
-        else:
-            server_config = saved_path + f'/Config/ServerConfig.ini'
+        path = get_game_server_config_paths (server)
+        config = get_game_server_config_from_path (path)
 
         data = settings
-
-        config = configparser.ConfigParser()
-        config.read (server_config)
 
         for key, value in data.items():
             config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', key, str(value))
         
-        with open(server_config, 'w') as configfile:
+        with open(path, 'w') as configfile:
             config.write(configfile)
         
         return jsonify ({"status" : "success"}), 200
@@ -250,18 +255,8 @@ def apply_server_settings (server, settings):
 
 def apply_gameplay_settings (server, settings):
     try:
-        path = get_server_config_paths (server)
-        config = MeshServer.read_config (path)
-
-        saved_path = config['General']['saved_path_dont_touch']
-        shared_dir = config['General']['shared_install_dir']
-        if shared_dir:
-            server_config = saved_path + f'/Config/{server}.ini'
-        else:
-            server_config = saved_path + f'/Config/ServerConfig.ini'
-
-        config = configparser.ConfigParser()
-        config.read (server_config)
+        path = get_game_server_config_paths (server)
+        config = get_game_server_config_from_path (path)
 
         gameplay_config_str = config.get ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig')
 
@@ -274,7 +269,7 @@ def apply_gameplay_settings (server, settings):
 
         config.set ('/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C', 'GameplayConfig', new_gameplay_config)
 
-        with open(server_config, 'w') as configfile:
+        with open(path, 'w') as configfile:
             config.write(configfile)
         
         return jsonify ({"status" : "success"}), 200
@@ -327,14 +322,15 @@ def receive_new_reports():
         return jsonify({'status': 'failed', 'message': 'Empty data received'}), 204
     
     try:
-        global new_reports
         data = request.get_json()
         reports_data = json.loads (data)
 
-        new_reports.clear()
+        lock = get_lock ()
+        with lock:
+            app.config['new_reports'].clear()
 
-        for report in reports_data:
-            new_reports.append (report)
+            for report in reports_data:
+                app.config['new_reports'].append (report)
 
         return 'Sucess', 200
 
@@ -352,12 +348,17 @@ def stream_server_info():
                 server_info = get_servers()
                 server_info_dicts = {
                     server_name: {
-                        'server_name': server.server_name,
+                        'server_name': server.name,
                         'current_users': server.current_users,
                         'server_status': server.server_status,
-                        'current_gamemode' : server.previous_gamemode,
                         'gamemode_changes': server.gamemode_changes,
-                        'server_restarts' : server.server_restarts
+                        'server_restarts' : server.server_restarts,
+                        'current_game': server.current_game,
+                        'current_gamemode': server.current_gamemode,
+                        'previous_game': server.previous_game,
+                        'current_checkpoint': server.current_checkpoint,
+                        'last_completed_objective': server.last_completed_objective,
+                        'player_deaths': server.player_deaths
                     }
                     for server_name, server in server_info.items()
                 }
@@ -394,8 +395,9 @@ def stream_new_reports_quantity ():
     def generate():
         with app.app_context():
             while True:
-                global new_reports
-                yield f"data: {json.dumps(len (new_reports))}\n\n"
+                lock = get_lock()
+                with lock:
+                    yield f"data: {json.dumps(len (app.config['new_reports']))}\n\n"
 
                 time.sleep (3)
     return Response (generate(), mimetype='text/event-stream')
@@ -405,8 +407,9 @@ def stream_new_reports ():
     def generate():
         with app.app_context():
             while True:
-                global new_reports
-                yield f"data: {json.dumps(new_reports)}\n\n"
+                lock = get_lock()
+                with lock:
+                    yield f"data: {json.dumps(app.config['new_reports'])}\n\n"
 
                 time.sleep (7)
     return Response (generate(), mimetype='text/event-stream')
@@ -417,7 +420,7 @@ def web_server_home ():
 
 @app.route('/reports')
 def web_server_reports ():
-    return render_template('user_reports.html', reports=new_reports)
+    return render_template('user_reports.html', reports=app.config['new_reports'])
 
 @app.route('/server/<server_name>')
 def web_server_server_page(server_name):
@@ -544,12 +547,12 @@ def reports_delete_report ():
 
 @app.route ('/reports/read', methods=['POST'])
 def reports_read_report ():
-    global new_reports
-
     try: 
         data = request.get_data (as_text=True)
         response = send_server_control ("read_report", None, hash=data)
-        new_reports = [obj for obj in new_reports if obj['hash'] != data]
+        lock = get_lock ()
+        with lock:
+            app.config['new_reports'] = [obj for obj in app.config['new_reports'] if obj['hash'] != data]
         return jsonify (response['message']), response['status']
     except Exception as e:
         return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
@@ -597,13 +600,13 @@ def read_global_config ():
 
 def main ():
     os_name = platform.system ()
-    if os_name == "Windows":
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger('waitress')
-        logger.setLevel (logging.INFO)
-        waitress.serve (app, listen='127.0.0.1:5000', threads=8)
-    else:
-        app.run(debug=False, host='127.0.0.1')
+    #if os_name == "Windows":
+    logging.basicConfig(level=logging.ERROR)
+    logger = logging.getLogger('waitress')
+    logger.setLevel (logging.ERROR)
+    waitress.serve (app, listen='0.0.0.0:5000', threads=8)
+    #else:
+    #    app.run(debug=False, host='127.0.0.1')
 
 if __name__ == '__main__':
     main()

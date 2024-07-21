@@ -2,7 +2,7 @@
     # Mesh Server Tool
 
     Author: Skomesh
-    Version 2.0.0 (Alpha 1)
+    Version 2.0.0 (Alpha 2)
 
     Meshed Server Tool is a locally hosted web interface for managing SCP: 5K dedicated servers.
 

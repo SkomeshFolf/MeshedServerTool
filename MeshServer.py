@@ -17,11 +17,21 @@ import socket
 import traceback
 import hashlib
 import platformdirs
+import chardet
+from enum import Enum
+import logging
 
 class OSErrorDetectionError (Exception):
     def __init__ (self, message="Either unable to detect the current OS or current OS is not supported."):
         self.message = message
         super().__init__(self.message)
+
+class LogLevel (Enum):
+    DEBUG = 10
+    INFO = 20
+    WARNING = 30
+    ERROR = 40
+    CRITICAL = 50
 
 class Server:
     def __init__(self, name, config, server_info):
@@ -57,8 +67,7 @@ class Server:
         if not self.check_if_valid_install_dir():
             self.wait_for_valid_install_dir()
 
-        UserReport.register_reports_directory (os.path.join (self.saved_file_path, '/Reports'))
-
+        UserReport.register_reports_directory (os.path.join (self.saved_file_path, 'Reports'))
         self.start_server()
         self.start_log_analysis()
     
@@ -93,7 +102,7 @@ class Server:
         global data_dir
 
         self.name = new_name
-        self.server_info.server_name = new_name
+        self.server_info.name = new_name
         self.config_path = os.path.join (data_dir, f"Server_{new_name}", "config.ini")
         self.read_server_config ()
         
@@ -125,7 +134,7 @@ class Server:
 
     def check_if_valid_install_dir (self):
         if os.path.exists (self.install_dir):
-            if os.path.exists (self.install_dir + "/WindowsServer") or os.path.exists (self.install_dir + "/LinuxServer"):
+            if os.path.exists (os.path.join (self.install_dir, "WindowsServer")) or os.path.exists (os.path.join (self.install_dir, "LinuxServer")):
                 return True
             else:
                 return False
@@ -136,10 +145,13 @@ class Server:
         path_valid = False
 
         while not path_valid:
-            print (f"{self.name} could not find server at {self.install_dir}. Please update config with the server\'s root. Will retry in 10 seconds.")
-            
             self.read_server_config()
             path_valid = self.check_if_valid_install_dir()
+
+            if path_valid:
+                break
+
+            write_to_log_error ("Could not find server at specified directory. Please update the directory.", LogLevel.ERROR, self.name)
 
             time.sleep (10)
 
@@ -160,6 +172,8 @@ class Server:
         if not self.server_process:
             if self.shared_dir:
                 server_config = os.path.join (self.saved_file_path, "Config", f"{self.name}.ini")
+                if not os.path.exists (server_config):
+                    shutil.copy (os.path.join (self.saved_file_path, "Config", "ServerConfig.ini"), os.path.join (self.saved_file_path, "Config", f"{self.name}.ini"))
             else:
                 server_config = os.path.join (self.saved_file_path, "Config", "ServerConfig.ini")
             
@@ -290,7 +304,6 @@ class Server:
         register_server_idle (self.name)
 
     def server_crashed (self):
-        print ("Server crashed")
         self.last_crash = datetime.now().time()
         self.server_info.server_status_change (-2)
         time.sleep (3)
@@ -357,8 +370,11 @@ class Server:
                 try:
                     self.log = pygtail.Pygtail(self.log_file_path)
                 except FileNotFoundError:
-                    print(f"Error: Log file {self.log_file_path} not found.")
+                    write_to_log_error (f"Log file {self.log_file_path} not found.", LogLevel.ERROR, self.name)
                     return
+                except Exception as e:
+                    write_to_log_error (f"Unexpected exception while opening log. {e}", LogLevel.ERROR, self.name)
+
                 
                 # Keep executing while the server is active.
                 # Server will be labeled inactive if the server restarts, suspends or crashes.
@@ -374,14 +390,6 @@ class Server:
                     else:
                         self.server_crashed()
 
-                    # Has the server been idle for 30 minutes? Should the server restart anyways?
-                    '''
-                    if self.idle_time > 0:
-                        if self.server_info.gamemode_changes > 1:
-                            if time.time() > self.idle_time + 30:
-                                self.restart_server("Server idle")
-                    '''
-
                     # Go through each new line 
                     with open(self.log_file_path, 'r') as log_file:
                         for _ in range(self.current_line):
@@ -390,40 +398,75 @@ class Server:
                         for line in log_file:
                             self.current_line += 1
 
-                            # Is the latest log a gamemode change?
-                            game_class = log_is_new_gamemode(line)
-                            if game_class:
+                            # Has an objective been completed?
+                            objective_completed = log_is_objective_completed (line)
+                            if objective_completed:
+                                self.server_info.objective_completed (objective_completed)
+
+                            # Has a checkpoint been reached? 
+                            checkpoint = log_is_new_checkpoint (line)
+                            if checkpoint:
+                                self.server_info.new_checkpoint (checkpoint)
+
+                            # Has a player died?
+                            player_death = log_has_player_died (line)
+                            if player_death:
+                                self.server_info.player_died ()
+
+                            # Has the game ended?
+                            game_ended = log_has_game_ended (line)
+                            if game_ended:
+                                self.server_info.game_ended ()
+
+                            # Has the game started?
+                            game_started = log_is_game_started (line)
+                            if game_started:
+                                self.server_info.game_started ()
+
+                            # Is the next game declared?
+                            next_game = log_is_next_game (line)
+                            if next_game:
                                 if self.manual_shutdown_flag:
                                     self.shutdown_server()
                                     server_active = False
                                     server_logging = False
                                     break
 
-                                # Suspend the server if beyond active hours
                                 if self.active_hours:
                                     if not self.is_active_hours ():
                                         self.suspend_server()
                                         server_active = False
                                         server_logging = False
                                         break
-                                
-                                # Check if new gamemode is an idle state
-                                if game_class == "Entry":
-                                    self.idle_server()
-                                else:
-                                    self.server_info.gamemode_change (game_class)
-                                    # Declare the server is active
-                                    self.active_server ()
 
-                                # Check if server should restart for either max gamemode changes or loading the wrong gamemode.
                                 if self.server_info.gamemode_changes > self.max_reloads:
                                     self.restart_server(f"Server reloaded {self.server_info.gamemode_changes} times")
                                     server_active = False
                                     break
-                                elif self.restricted_gamemode != '' and self.server_info.previous_gamemode != self.restricted_gamemode:
+                                elif self.restricted_gamemode != '' and self.server_info.current_game != self.restricted_gamemode:
                                     self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
                                     server_active = False
                                     break
+
+                            # Is the next game loading?
+                            game_loading = log_is_game_loading (line)
+                            if game_loading:
+                                self.server_info.game_loading (game_loading)
+
+                            # Is a new gamemode?
+                            gamemode = log_is_new_gamemode (line)
+                            if gamemode:
+                                self.server_info.new_gamemode (gamemode)
+
+                            # Has session been created?
+                            session_create = log_is_session_creation (line)
+                            if session_create:
+                                self.server_info.session_created ()
+
+                            # Is server idling?
+                            server_idle = log_is_entering_idle (line)
+                            if server_idle:
+                                self.idle_server()
 
                             # Is the latest log a player joining? Log it in the server info.
                             player_id = log_is_player_joined(line)
@@ -434,23 +477,10 @@ class Server:
                             player_id = log_is_player_leave(line)
                             if player_id:
                                 self.server_info.player_leave(player_id)
-
-                            # Is the latest log the server entering an idle state? Enter idle state.
-                            server_idle = log_is_entering_idle (line)
-                            if server_idle:
-                                self.idle_server()
-
-                            server_activating = log_is_game_starting (line)
-                            if server_activating:
-                                self.active_server()
                             
                             # Is this the first time the server has started? Init the server.
                             if not self.server_started:
-                                start_mode = log_is_starting_gamemode (line)
                                 session_create = log_is_session_creation (line)
-
-                                if start_mode:
-                                    self.server_info.gamemode_change (start_mode)
 
                                 if session_create:
                                     self.server_info.server_status_change (4)
@@ -462,8 +492,12 @@ class Server:
 
 class ServerInfo:
     def __init__ (self, name):
-        self.server_name = name
-        self.previous_gamemode = None
+        self.name = name
+        self.current_game = None
+        self.current_gamemode = None
+        self.current_checkpoint = None
+        self.last_completed_objective = None
+        self.previous_game = None
         self.joined_users = set()
         self.disconnected_users = set()
         self.current_users = set()
@@ -471,34 +505,85 @@ class ServerInfo:
         self.total_user_joins = 0
         self.total_user_disconnects = 0
         self.server_restarts = 0
+        self.player_deaths = 0
+        self.game_attempts = 0
         self.server_status = 'Offline'
     
     def player_join (self, player):
         self.total_user_joins += 1
         self.joined_users.add(player)
         self.current_users.add(player)
-        register_player_join (self.server_name, player)
+        register_player_join (self.name, player)
     
     def player_leave (self, player):
         self.total_user_disconnects += 1
         self.disconnected_users.add(player)
         self.current_users.discard(player)
-        register_player_leave (self.server_name, player)
+        register_player_leave (self.name, player)
 
-    def gamemode_change (self, gamemode):
-        if gamemode != self.previous_gamemode:
+    def game_change (self, game):
+        self.reset_game_variables()
+
+        if game != self.current_gamemode:
             self.gamemode_changes += 1
-            self.previous_gamemode = gamemode
-        register_server_gamemode (self.server_name, gamemode)
+            self.previous_game = self.current_game
+            self.current_game = game
+        else:
+            self.game_attempts += 1
+            self.current_game = game
+
+    def new_checkpoint (self, checkpoint):
+        self.current_checkpoint = checkpoint
+        register_checkpoint (self.name, checkpoint)
+
+    def objective_completed (self, objective):
+        self.last_completed_objective = objective
+        register_objective_completed (self.name, objective)
+
+    def player_died (self):
+        self.player_deaths += 1
+        register_player_died (self.name)
+
+    def game_ended (self):
+        self.server_status_change (6)
+        register_game_ended (self.name)
+
+    def game_started (self):
+        self.server_status_change (5)
+        register_game_started (self.name)
     
+    def game_loading (self, game):
+        self.game_change (game)
+        self.server_status_change (7)
+        register_game_loading (self.name, game)
+
+    def new_gamemode (self, gamemode):
+        self.current_gamemode = gamemode
+        register_gamemode_loading (self.name, gamemode)
+    
+    def session_created (self):
+        self.server_status_change (4)
+        register_session_created (self.name)
+
+    def reset_game_variables (self):
+        self.player_deaths = 0
+        self.current_checkpoint = None
+        self.last_completed_objective = None
+        
     def reset_variables (self):
-        self.previous_gamemode = None
+        self.current_game = None
+        self.current_gamemode = None
+        self.previous_game = None
+        self.current_checkpoint = None
+        self.last_completed_objective = None
         self.joined_users = set()
         self.disconnected_users = set()
         self.current_users = set()
         self.gamemode_changes = 0
         self.total_user_joins = 0
         self.total_user_disconnects = 0
+        self.player_deaths = 0
+        self.game_attempts = 0
 
     def server_status_change (self, new_status):
         status_dict = {
@@ -511,14 +596,21 @@ class ServerInfo:
             2: 'Starting',
             3: 'Restarting',
             4: 'Idle',
-            5: 'Active'
+            5: 'Active',
+            6: 'Game Ended',
+            7: 'Game Starting'
         }
         self.server_status = status_dict.get (new_status, 'Offline')
         send_server_info()
     
     def __repr__(self):
-        return f"ServerInfo(server_name={self.server_name}, " \
-               f"previous_gamemode={self.previous_gamemode}, " \
+        return f"ServerInfo(name={self.name}, " \
+               f"previous_game={self.previous_game}, " \
+               f"current_game={self.current_game}, " \
+               f"current_gamemode={self.current_gamemode}, " \
+               f"current_checkpoint={self.current_checkpoint}, " \
+               f"last_completed_objective={self.last_completed_objective}, " \
+               f"player_deaths={self.player_deaths}, " \
                f"joined_users={self.joined_users}, " \
                f"disconnected_users={self.disconnected_users}, " \
                f"current_users={self.current_users}, " \
@@ -526,7 +618,7 @@ class ServerInfo:
                f"total_user_joins={self.total_user_joins}, " \
                f"total_user_disconnects={self.total_user_disconnects}, " \
                f"server_restarts={self.server_restarts}, " \
-               f"server_status={self.server_status})"
+               f"server_status={self.server_status}) "
     
 class UserReport:
     report_directories = []
@@ -551,6 +643,9 @@ class UserReport:
     def register_reports_directory (dir):
         if dir not in UserReport.report_directories:
             UserReport.report_directories.append(dir)
+            if not os.path.exists (dir):
+                os.makedirs (dir)
+                logging.info (f"{dir} doesn't exist. Creating..")
 
     @staticmethod
     def remove_reports_directory (dir):
@@ -569,23 +664,35 @@ class UserReport:
             time.sleep (45)
 
     @staticmethod
-    def search_directories ():
+    def search_directories():
         new_reports = []
         for directory in UserReport.report_directories:
             if not os.path.isdir(directory):
-                print(f"[UserReport.search_directories] Warning: Directory '{directory}' does not exist.")
-                UserReport.remove_reports_directory (directory)
+                write_to_log_error (f"Directory '{directory}' does not exist.", LogLevel.WARNING, method="UserReport.search_directories()")
+                UserReport.remove_reports_directory(directory)
                 continue
-            
+
             for filename in os.listdir(directory):
                 file_path = os.path.join(directory, filename)
                 if os.path.isfile(file_path):
-                    with open(file_path, 'r') as file:
-                        file_contents = file.read()
-                        report = UserReport.parse_report(file_contents)
-                        
-                        if not UserReport.has_report_been_handled (report.hash):
-                            new_reports.append (report)
+                    with open(file_path, 'rb') as file:
+                        raw_data = file.read()
+
+                    result = chardet.detect(raw_data)
+                    encoding = result['encoding']
+
+                    try:
+                        with open(file_path, 'r', encoding=encoding) as file:
+                            file_contents = file.read()
+                    except UnicodeDecodeError:
+                        write_to_log_error (f"Could not decode file '{file_path}'. Attempting to read with errors='replace'.", LogLevel.WARNING, method="UserReport.search_directories()")
+                        with open(file_path, 'r', encoding=encoding, errors='replace') as file:
+                            file_contents = file.read()
+
+                    report = UserReport.parse_report(file_contents)
+
+                    if not UserReport.has_report_been_handled(report.hash):
+                        new_reports.append(report)
 
         send_new_reports (new_reports)
                 
@@ -649,83 +756,117 @@ web_server_address = None
 web_server_port = None
 
 def register_player_join (server, player):
-    print (f"Player {player} has joined {server}")
     write_to_log (server, f"Player {player} connected.")
     send_server_info ()
 
 def register_player_leave (server, player):
-    print (f"Player {player} has left {server}")
     write_to_log (server, f"Player {player} has disconnected.")
     send_server_info ()
 
 def register_server_restart (server, reason):
-    print (f"Server {server} has restarted for: {reason}.")
     write_to_log (server, f"Server restarted for: {reason}.")
-    send_server_info ()
-
-def register_server_gamemode (server, gamemode):
-    print (f"Server {server} has changed gamemode to {gamemode}")
-    write_to_log (server, f"Gamemode changed to {gamemode}.")
     send_server_info ()
     
 def register_server_start (server):
-    print (f"Server {server} has started")
     write_to_log (server, f"Server started.")
     send_server_info ()
 
 def register_server_active (server):
-    print (f"Server {server} is now active")
     write_to_log (server, f"Server active.")
     send_server_info ()
 
 def register_server_stop (server):
-    print (f"Server {server} has stopped")
     write_to_log (server, f"Server stopped.")
     send_server_info ()
 
 def register_server_offline (server):
-    print (f"Server {server} is now offline")
     write_to_log (server, f"Server offline.")
     send_server_info ()
 
 def register_server_suspend (server):
-    print (f"Server {server} has suspended")
     write_to_log (server, "Server suspended.")
     send_server_info ()
 
 def register_server_wake (server):
-    print (f"Server {server} woke from suspending")
     write_to_log (server, "Server waking from suspension.")
     send_server_info ()
 
 def register_server_idle (server):
-    print (f"Server {server} is now idle.")
     write_to_log (server, "Server is now idle.")
     send_server_info ()
 
 def register_server_creating (server):
-    print (f"Server {server} is being created for the first time.")
     write_to_log (server, "Server is being created for the first time.")
     send_server_info()
 
 def register_server_created (server):
-    print (f"Server {server} has successfully been created.")
-    write_to_log (server, "Server has been successfully created.")
-    send_server_info()
+    write_to_log (server, "Server successfully created.")
 
-def register_web_server_error (e):
-    print (f"Web Server Error: {e}")
-    write_to_log ("Web Server", f"Web Server Error: {e}")
+def register_game_change (server, game):
+    write_to_log (server, f"Game changed to {game}.")
 
-def log_is_new_gamemode(line):
+def register_checkpoint (server, checkpoint):
+    write_to_log (server, f"Activated checkpoint {checkpoint}.")
+
+def register_objective_completed (server, objective):
+    write_to_log (server, f"Completed objective {objective}.")
+
+def register_player_died (server):
+    write_to_log (server, f"Player died.")
+
+def register_game_ended (server):
+    write_to_log (server, "Game ended.")
+
+def register_game_started (server):
+    write_to_log (server, "Game started.")
+
+def register_game_loading (server, game):
+    write_to_log (server, f"Loading {game}.")
+
+def register_gamemode_loading (server, gamemode):
+    write_to_log (server, f"Gamemode: {gamemode}.")
+
+def register_session_created (server):
+    write_to_log (server, "Session created. Now idling.")
+
+def log_is_objective_completed (line):
+    match = re.search(r'LogObjectives: Completed Objective (.*?) successfully', line)
+    return match.group(1) if match else None
+
+def log_is_new_checkpoint (line):
+    match = re.search (r'LogGameState: Unlocked Checkpoint (.*)', line)
+    return match.group(1) if match else None
+
+def log_has_player_died (line):
+    match = re.search (r'LogBlueprintUserMessages: Player Died', line)
+    return bool (match)
+
+def log_has_game_ended (line):
+    match = re.search (r'LogBlueprintUserMessages: Game has ended', line)
+    return bool (match)
+
+def log_is_game_started (line):
+    match = re.search (r'LogBlueprintUserMessages: Game has started', line)
+    return bool (match)
+
+def log_is_next_game (line):
     match = re.search(r'Map vote has concluded, travelling to (.+)', line)
-    if match: 
-        return match.group(1) if match else None
+    return match.group(1) if match else None
 
-def log_is_starting_gamemode (line):
-    match = re.search (r'LogLoad: LoadMap: /Game/SCPPandemic/Maps/([^/]+)/', line)
+def log_is_game_loading (line):
+    match = re.search (r'LogAIModule: Creating AISystem for world (.*)', line)
+
     if match:
-        return match.group(1) if match else None
+        if match.group(1) == 'TransitionMap':
+            return None
+        else:
+            return match.group (1)
+    else:
+        return None
+    
+def log_is_new_gamemode (line):
+    match = re.search (r'LogLoad: Game class is \'(.*?)\'', line)
+    return match.group(1) if match else None
     
 def log_is_session_creation (line):
     match = re.search (r'Create session complete', line)
@@ -735,16 +876,9 @@ def log_is_entering_idle (line):
     match = re.search (r'Entering Standby, going to standby map M_ServerDefault.', line)
     return bool (match)
 
-def log_is_game_starting (line):
-    match = re.search (r'(Game|Gamemode) has started', line)
-    return match
-
 def log_is_player_joined (line):
     match = re.search(r'Sending auth result to user (\d+)', line)
-    if match:
-        return match.group(1)
-    
-    return None
+    return match.group(1) if match else None
 
 def log_is_player_leave (line):
     close_match = re.search(r'UNetConnection::Close: \[UNetConnection\] RemoteAddr: (\d+):', line)
@@ -757,10 +891,10 @@ def log_is_player_leave (line):
     if (kick_match):
         return kick_match.group(1)
     
-    cleanup = re.search(r'LogNet: UChannel::CleanUp: ChIndex == \d+. Closing connection. \[UChannel\] ChIndex: \d+, Closing: \d+ \[UNetConnection\] RemoteAddr: (\d+):', line)
+    #cleanup = re.search(r'LogNet: UChannel::CleanUp: ChIndex == \d+. Closing connection. \[UChannel\] ChIndex: \d+, Closing: \d+ \[UNetConnection\] RemoteAddr: (\d+):', line)
 
-    if cleanup:
-        return cleanup.group(1)
+    #if cleanup:
+    #    return cleanup.group(1)
     
     return None
 
@@ -773,9 +907,7 @@ def log_is_player_id(log_file_path):
             steam_ids.update(matches)
 
     # Log the collected Steam IDs
-    print("All Steam IDs in the log file:")
-    for steam_id in steam_ids:
-        print(steam_id)
+    #for steam_id in steam_ids:
 
 
 def execute_server_start (server):
@@ -796,13 +928,17 @@ def send_server_info ():
     
     # Check web server status, return if offline, not found or not used.
     if not check_web_server():
-        print ("Failed to ping web server")
+        write_to_log_error ("Failed to ping web server", method="send_server_info()")
         return
     
     server_info_dicts = [
         {
-            "server_name": info.server_name,
-            "previous_gamemode": info.previous_gamemode,
+            "server_name": info.name,
+            "current_game": info.current_game,
+            "current_gamemode": info.current_gamemode,
+            "current_checkpoint": info.current_checkpoint,
+            "last_completed_objective": info.last_completed_objective,
+            "previous_game": info.previous_game,
             "joined_users": list(info.joined_users),
             "disconnected_users": list(info.disconnected_users),
             "current_users": list(info.current_users),
@@ -810,6 +946,8 @@ def send_server_info ():
             "total_user_joins": info.total_user_joins,
             "total_user_disconnects": info.total_user_disconnects,
             "server_restarts": info.server_restarts,
+            "player_deaths": info.player_deaths,
+            "game_attempts": info.game_attempts,
             "server_status": info.server_status
         }
         for info in server_info
@@ -822,17 +960,17 @@ def send_server_info ():
         response = requests.post(url, json=json_string)
     except requests.exceptions.ConnectionError as e:
         if check_web_server():
-            register_web_server_error (f"Unknown Web Server Error. {e}")
+            write_to_log_error (f"Unknown Web Server Error. {e}", method="send_server_info()")
             return
         else:
-            register_web_server_error (f"Web server either crashed or lost connection. Attempting to reconnect.")
+            write_to_log_error (f"Web server either crashed or lost connection. Attempting to reconnect.", method="send_server_info()")
             return
     except requests.exceptions.Timeout as e:
         if check_web_server():
-            register_web_server_error (f"Unknown Web Server Error. {e}")
+            write_to_log_error (f"Unknown Web Server Error. {e}", method="send_server_info()")
             return
         else:
-            register_web_server_error (f"Web server either crashed or lost connection. Attempting to reconnect.")
+            write_to_log_error (f"Web server either crashed or lost connection. Attempting to reconnect.", method="send_server_info()")
             return
 
 def send_new_reports (reports):
@@ -840,7 +978,7 @@ def send_new_reports (reports):
     
     # Check web server status, return if offline, not found or not used.
     if not check_web_server():
-        print ("Failed to ping web server")
+        write_to_log_error ("Failed to ping web server", method="send_new_reports()")
         return
     
     report_dict = [
@@ -863,17 +1001,17 @@ def send_new_reports (reports):
         response = requests.post(url, json=json_data)
     except requests.exceptions.ConnectionError as e:
         if check_web_server():
-            register_web_server_error (f"Unknown Web Server Error. {e}")
+            write_to_log_error (f"Unknown Web Server Error. {e}", method="send_server_info()")
             return
         else:
-            register_web_server_error (f"Web server either crashed or lost connection. Attempting to reconnect.")
+            write_to_log_error (f"Web server either crashed or lost connection. Attempting to reconnect.", method="send_server_info()")
             return
     except requests.exceptions.Timeout as e:
         if check_web_server():
-            register_web_server_error (f"Unknown Web Server Error. {e}")
+            write_to_log_error (f"Unknown Web Server Error. {e}", method="send_server_info()")
             return
         else:
-            register_web_server_error (f"Web server either crashed or lost connection. Attempting to reconnect.")
+            write_to_log_error (f"Web server either crashed or lost connection. Attempting to reconnect.", method="send_server_info()")
             return
 
 def begin_server (name):
@@ -985,10 +1123,10 @@ def update_server_path_name (server):
     server_instance = get_server_from_name (server)
     server_instance.read_server_config()
     
-    server_new_name = server_instance.server_name
+    server_new_name = server_instance.name
     
     if server is not server_new_name:
-        server_instance.server_info.server_name = server_new_name
+        server_instance.server_info.name = server_new_name
         
         old_path = os.path.join (data_dir, f"Server_{server}")
         new_path = os.path.join (data_dir, f"Server_{server_new_name}")
@@ -996,7 +1134,7 @@ def update_server_path_name (server):
         try:
             os.rename (old_path, new_path)
         except Exception as e:
-            print (e)
+            write_to_log_error (e, method="update_server_path_name()")
 
         server_instance.update_server_path_name (server_new_name)
 
@@ -1028,25 +1166,19 @@ def get_server_from_name (name):
 
 
 def check_web_server ():
-    global is_using_web_server
     global web_server_online
     global wait_for_web_server_thread
 
-    # Is web server used
-    if is_using_web_server:    
-        # Check if web server is online, and re-ping it
-        if web_server_online:
-            if ping_web_server():
-                return True
-            else:
-                start_wait_for_web_server_thread()
-                return False
-        # If web server is not currently online, double check if we need to restart a waiting thread
+    # Check if web server is online, and re-ping it
+    if web_server_online:
+        if ping_web_server():
+            return True
         else:
             start_wait_for_web_server_thread()
             return False
+    # If web server is not currently online, double check if we need to restart a waiting thread
     else:
-        return False
+        start_wait_for_web_server_thread()
     
 def ping_web_server ():
     global web_server_address, web_server_port
@@ -1061,7 +1193,7 @@ def ping_web_server ():
         if response.status_code // 100 == 2:
             return True
         else:
-            print(f"Server returned an error: {response.status_code}")
+            write_to_log_error (f"Server returned an error: {response.status_code}", method="ping_web_server()")
             return False
     except requests.ConnectionError:
         return False
@@ -1076,7 +1208,7 @@ def wait_for_web_server ():
         if ping_web_server():
             web_server_online = True
             wait_for_web_server_thread = None
-        time.sleep (20)
+        time.sleep (5)
 
 def start_wait_for_web_server_thread():
     global wait_for_web_server_thread
@@ -1087,12 +1219,52 @@ def start_wait_for_web_server_thread():
 def write_to_log (server, content):
     global log_dir
 
+    logging.info (f"{server} - {content}")
+
     log_file = os.path.join (log_dir, "log.txt")
 
     current_datetime = datetime.now()
     formatted_datetime = current_datetime.strftime("%d-%m-%Y %Hh%M")
     with open(log_file, 'a') as log:
         log.write(f"\n[{formatted_datetime}] {server} - {content}")
+
+def write_to_log_error (content, severity: LogLevel=LogLevel.WARNING, server="", method=""):
+    global log_dir 
+
+    console_error_string = ""
+    if server != "":
+        console_error_string += f" {server}"
+    if method != "":
+        console_error_string += f" {method}"
+    console_error_string += f" - {content}"
+
+    match severity:
+        case LogLevel.DEBUG:
+            logging.debug (content)
+        case LogLevel.INFO:
+            logging.info (content)
+        case LogLevel.WARNING:
+            logging.warning (content)
+        case LogLevel.ERROR:
+            logging.error (content)
+        case LogLevel.CRITICAL:
+            logging.critical (content)
+
+    log_file = os.path.join (log_dir, "log.txt")
+
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%d-%m-%Y %Hh%M")
+
+    error_string = f"\n[{formatted_datetime}] [{severity.name}]"
+    if server != "":
+        error_string += f" {server}"
+    if method != "":
+        error_string += f" ({method})"
+    error_string += f" - {content}"
+    
+
+    with open(log_file, 'a') as log:
+        log.write(error_string)
 
 def create_log_file():
     global log_dir
@@ -1274,7 +1446,7 @@ def handle_client (client_socket, client_address):
             user_id = request_data['user_id']
             add_to_global_ban_list (user_id)
     except Exception as e:
-        print (f"Error handling client {client_address}: {e}, {traceback.format_exc()}")
+        write_to_log_error (f"Error handling client {client_address}: {e}, {traceback.format_exc()}", LogLevel.ERROR, method="handle_client()")
     finally:
         client_socket.close()
 

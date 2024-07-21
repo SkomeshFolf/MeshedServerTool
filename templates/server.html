@@ -99,8 +99,12 @@
             {
                 $('#text_restarts').text(server_info.server_restarts);
                 $('#text_gamemode_changes').text(server_info.gamemode_changes);
+                $('#text_previous_game').text(server_info.previous_game);
+                $('#text_game').text(server_info.current_game);
                 $('#text_gamemode').text(server_info.current_gamemode);
-                $("#server_name").text (decodeURIComponent (server_info.server_name));
+                $('#text_checkpoint').text(server_info.current_checkpoint);
+                $('#text_objective').text(server_info.last_completed_objective);
+                $('#text_deaths').text(server_info.player_deaths);
             }
             function updateStatusBadge (server_info)
             {
@@ -114,7 +118,9 @@
                     'Starting': 'badge bg-warning',
                     'Restarting': 'badge bg-warning',
                     'Idle': 'badge bg-secondary',
-                    'Active': 'badge bg-success'
+                    'Active': 'badge bg-success',
+                    'Game Ended': 'badge bg-success',
+                    'Game Starting': 'badge bg-success'
                 }[server_info.server_status];
                 $('#status_badge').removeClass().addClass('badge ' + badge_class).text('Status: ' + server_info.server_status);
             }
@@ -619,7 +625,9 @@
                         'Starting': 'badge bg-warning',
                         'Restarting': 'badge bg-warning',
                         'Idle': 'badge bg-secondary',
-                        'Active': 'badge bg-success'
+                        'Active': 'badge bg-success',
+                        'Game Ended': 'badge bg-success',
+                        'Game Starting': 'badge bg-success'
                     }[server.server_status] %}
                     <span class="badge {{ badge_class }}" style="float: right" id="status_badge">{{ server.server_status }}</span>
                 {% else %}
@@ -630,9 +638,13 @@
             </div>
             <div class="card-body">
                 <div id="stats_body_info">
-                    <p>Server Restarts: <span id="text_restarts"> {{ server.server_restarts }}</span></p>
-                    <p>Number of Gamemode Changes: <span id="text_gamemode_changes"> {{ server.gamemode_changes }} </span></p>
-                    <p>Current Gamemode: <span id="text_gamemode">{{ server.previous_gamemode }}</span></p>
+                    <p>Server Restarts: <span class="server_values" id="text_restarts"> {{ server.server_restarts }}</span></p>
+                    <p>Number of Gamemode Changes: <span class="server_values" id="text_gamemode_changes"> {{ server.gamemode_changes }} </span></p>
+                    <p>Previous Game: <span class="server_values" id="text_previous_game">{{ server.previous_game }}</span></p>
+                    <p>Current Game: <span class="server_values" id="text_game">{{ server.current_game }} </span>, running gamemode: <span class="server_values" id="text_gamemode">{{ server.current_gamemode }}</span></p>
+                    <p>Current Checkpoint: <span class="server_values" id="text_checkpoint">{{ server.current_checkpoint }}</span></p>
+                    <p>Last Completed Objective: <span class="server_values" id="text_objective">{{ server.last_completed_objective }}</span></p>
+                    <p>Player Deaths This Round: <span class="server_values" id="text_deaths">{{ server.player_deaths }}</span></p>
                 </div>
                 <div id="stats_body_buttons"> 
                     <button type="button" class="btn btn-danger" id="killServerBtn">Kill Server</button>
