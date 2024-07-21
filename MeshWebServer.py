@@ -358,7 +358,8 @@ def stream_server_info():
                         'previous_game': server.previous_game,
                         'current_checkpoint': server.current_checkpoint,
                         'last_completed_objective': server.last_completed_objective,
-                        'player_deaths': server.player_deaths
+                        'player_deaths': server.player_deaths,
+                        'game_attempts': server.game_attempts
                     }
                     for server_name, server in server_info.items()
                 }

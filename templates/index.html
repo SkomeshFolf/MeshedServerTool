@@ -23,7 +23,9 @@
                     'Starting': 'bg-warning',
                     'Restarting': 'bg-warning',
                     'Idle': 'bg-secondary',
-                    'Active': 'bg-success'
+                    'Active': 'bg-success',
+                    'Game Ended': 'bg-success',
+                    'Game Starting': 'bg-success'
                 }[server.server_status];
 
                 $('#' + server.server_name + '-status-badge').removeClass().addClass('badge ' + badge_class).text('Status: ' + server.server_status);
@@ -74,10 +76,11 @@
                             'Starting': 'bg-warning',
                             'Restarting': 'bg-warning',
                             'Idle': 'bg-secondary',
-                            'Active': 'bg-success'
+                            'Active': 'bg-success',
+                            'Game Ended': 'bg-success',
+                            'Game Starting': 'bg-success'
                         }[server_info.server_status] %}
                         <span class="badge {{ badge_class }}" id="{{ server_name }}-status-badge">Status: {{ server_info.server_status }}</span>
-                        
                         
                         <a href="{{ url_for('web_server_server_page', server_name=server_info.server_name) }}"
                         class="btn btn-primary btn-sm">View Details</a>

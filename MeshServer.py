@@ -891,10 +891,10 @@ def log_is_player_leave (line):
     if (kick_match):
         return kick_match.group(1)
     
-    #cleanup = re.search(r'LogNet: UChannel::CleanUp: ChIndex == \d+. Closing connection. \[UChannel\] ChIndex: \d+, Closing: \d+ \[UNetConnection\] RemoteAddr: (\d+):', line)
+    cleanup = re.search(r'LogNet: UChannel::CleanUp: ChIndex == \d+. Closing connection. \[UChannel\] ChIndex: \d+, Closing: \d+ \[UNetConnection\] RemoteAddr: (\d+):', line)
 
-    #if cleanup:
-    #    return cleanup.group(1)
+    if cleanup:
+        return cleanup.group(1)
     
     return None
 

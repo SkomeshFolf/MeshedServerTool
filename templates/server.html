@@ -105,6 +105,7 @@
                 $('#text_checkpoint').text(server_info.current_checkpoint);
                 $('#text_objective').text(server_info.last_completed_objective);
                 $('#text_deaths').text(server_info.player_deaths);
+                $('#text_attempts').text (server_info.game_attempts);
             }
             function updateStatusBadge (server_info)
             {
@@ -140,7 +141,7 @@
                     $("#killServerBtn").prop("disabled", false);
                     $("#stopServerBtn").prop("disabled", false);
                 }
-                else if (server_info.server_status == 'Waking' || server_info.server_status == 'Starting' || server_info.server_status == 'Restarting' || server_info.server_status == 'Idle' || server_info.server_status == 'Active')
+                else if (server_info.server_status == 'Waking' || server_info.server_status == 'Starting' || server_info.server_status == 'Restarting' || server_info.server_status == 'Idle' || server_info.server_status == 'Active' || server_info.server_status == 'Game Ended' || server_info.server_status == "Game Starting")
                 {
                     $("#startServerBtn").hide();
                     $("#killServerBtn").show();
@@ -222,12 +223,10 @@
             }
             function loadSettingsManagement (obj)
             {
-                initSettingsPlayers(); 
-
+                var shared_dir = obj.General.shared_install_dir === "True";
+                $("#server_setup_management_sharedDirectory").prop ('checked', shared_dir);
                 $("#server_setup_management_serverName").val (obj.General.server_name);
                 $("#server_setup_management_installDir").val (obj.General.install_dir);
-                var shared_dir = obj.General.shared_install_dir === "True";
-                $("#server_setup_management_sharedDir").prop ('checked', shared_dir);
                 $("#server_setup_management_maxReloads").val (obj.General.max_reloads);
                 $("#server_setup_management_port").val (obj.General.port);
                 $("#server_setup_management_queryPort").val (obj.General.queryport);
@@ -236,6 +235,8 @@
                 $('#server_setup_management_restrictedGamemode').val(obj.General.restricted_gamemode);
                 var serverArgs = obj.General.server_args.split (',').join('\n');
                 $("#server_setup_management_args").val(serverArgs);
+
+                initSettingsPlayers(); 
             }
             function initSettingsPlayers ()
             {
@@ -254,8 +255,6 @@
             }
             function loadSettingsPlayers (obj)
             {
-                initSettingsGameServer();
-
                 var admins = obj.admins.join('\n');
                 var owners = obj.owners.join('\n');
                 var whitelist = obj.whitelist.join('\n');
@@ -263,6 +262,8 @@
                 $('#server_setup_players_admins').val(admins);
                 $('#server_setup_players_owners').val(owners);
                 $('#server_setup_players_whitelist').val(whitelist);
+
+                initSettingsGameServer();
             }
             function initSettingsGameServer ()
             {
@@ -281,8 +282,6 @@
             }
             function loadSettingsServer (obj)
             {
-                initSettingsGameplay();
-
                 $("#server_setup_game_server_servername").val (obj.servername);
                 $("#server_setup_game_server_ZombieSpawnAmount").val (obj.zombiespawnamount);
                 $("#server_setup_game_server_RespawnTime").val (obj.respawntime);
@@ -316,6 +315,8 @@
                 $("#server_setup_game_server_bDevsAlwaysJoin").val(obj.bdevsalwaysjoin);
                 $("#server_setup_game_server_bTeamDamageEnabled").val(obj.bteamdamageenabled);
                 $("#server_setup_game_server_TeamDamageReflection").val(obj.teamdamagereflection);
+
+                initSettingsGameplay();
             }
             function initSettingsGameplay ()
             {
@@ -426,8 +427,6 @@
                         }
                     });
 
-                    console.log (jsonObject);
-
                     $.ajax ({
                         url: actionURL,
                         type: 'POST',
@@ -471,8 +470,6 @@
                     });
 
                     jsonObject.bUseServerPassword = $("#server_setup_game_server_bUseServerPassword").is (":checked");
-
-                    console.log (jsonObject);
 
                     $.ajax ({
                         url: actionURL,
@@ -638,13 +635,14 @@
             </div>
             <div class="card-body">
                 <div id="stats_body_info">
-                    <p>Server Restarts: <span class="server_values" id="text_restarts"> {{ server.server_restarts }}</span></p>
-                    <p>Number of Gamemode Changes: <span class="server_values" id="text_gamemode_changes"> {{ server.gamemode_changes }} </span></p>
-                    <p>Previous Game: <span class="server_values" id="text_previous_game">{{ server.previous_game }}</span></p>
                     <p>Current Game: <span class="server_values" id="text_game">{{ server.current_game }} </span>, running gamemode: <span class="server_values" id="text_gamemode">{{ server.current_gamemode }}</span></p>
                     <p>Current Checkpoint: <span class="server_values" id="text_checkpoint">{{ server.current_checkpoint }}</span></p>
                     <p>Last Completed Objective: <span class="server_values" id="text_objective">{{ server.last_completed_objective }}</span></p>
                     <p>Player Deaths This Round: <span class="server_values" id="text_deaths">{{ server.player_deaths }}</span></p>
+                    <p>Game Attempts: <span class="server_values" id="text_attempts">{{ server.game_attempts }}</span></p>
+                    <p>Previous Game: <span class="server_values" id="text_previous_game">{{ server.previous_game }}</span></p>
+                    <p>Server Restarts: <span class="server_values" id="text_restarts"> {{ server.server_restarts }}</span></p>
+                    <p>Number of Gamemode Changes: <span class="server_values" id="text_gamemode_changes"> {{ server.gamemode_changes }} </span></p>
                 </div>
                 <div id="stats_body_buttons"> 
                     <button type="button" class="btn btn-danger" id="killServerBtn">Kill Server</button>
