@@ -69,7 +69,6 @@ class Server:
 
         UserReport.register_reports_directory (os.path.join (self.saved_file_path, 'Reports'))
         self.start_server()
-        self.start_log_analysis()
     
     def read_server_config (self):
         self.config = read_config (self.config_path)
@@ -199,6 +198,7 @@ class Server:
             command = [self.server_executable] + server_args
             self.server_process = subprocess.Popen(command)
             self.server_info.server_restarts = self.server_info.server_restarts + 1
+            self.start_log_analysis()
 
     def launch_server_dry (self, shared_dir):
         server_args_raw = []
@@ -363,6 +363,7 @@ class Server:
             # Keep analyzing the log until it should stop.
             # This will continue until the server suspends.
             server_logging = True
+
             while server_logging and not self.manual_kill_flag:
                 time.sleep(3)
 
@@ -1377,7 +1378,7 @@ def generate_global_config ():
         'web_server_port': 5000
     }
     new_config['General'] = {
-        'log_checking_interval': 7
+        'log_checking_interval': 4
     }
     new_config['MOTD'] = {
         'global_server_motd': ''

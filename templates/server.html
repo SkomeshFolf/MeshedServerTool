@@ -197,13 +197,30 @@
             }
             function initSettingForms ()
             {
-                $("#server_setup_accordion").hide();
-                $("#server_setup_loading_spinner").show();
-                initSettingsManagement();
+                initLoadingButtons ();
                 initManagementFormSubmitButton();
                 initPlayersFormSubmitButton();
                 initServerFormSubmitButton();
                 initGameplayFormSubmitButton();
+            }
+            function initLoadingButtons ()
+            {
+                $("#server_setup_management_load_button").click (function () {
+                    initSettingsManagement();
+                    $(this).prop('disabled', true);
+                });
+                $("#server_setup_players_load_button").click (function () {
+                    initSettingsPlayers();
+                    $(this).prop('disabled', true);
+                });
+                $("#server_setup_game_server_load_button").click (function () {
+                    initSettingsGameServer();
+                    $(this).prop('disabled', true);
+                });
+                $("#server_setup_gameplay_load_button").click (function () {
+                    initSettingsGameplay();
+                    $(this).prop('disabled', true);
+                });
             }
             function initSettingsManagement ()
             {
@@ -212,9 +229,7 @@
                     url: '/server/' + $("#server_name").text() + '/request_management_settings',
                     dataType: 'json',
                     success: function (response) {
-                        
                         loadSettingsManagement (response);
-                        
                     },
                     error: function (xhr, status, error) {
                         console.error (error);
@@ -236,7 +251,8 @@
                 var serverArgs = obj.General.server_args.split (',').join('\n');
                 $("#server_setup_management_args").val(serverArgs);
 
-                initSettingsPlayers(); 
+                $("#server_setup_management_load_button").hide();
+                $("#server_setup_management_form").show();
             }
             function initSettingsPlayers ()
             {
@@ -245,7 +261,6 @@
                     url: '/server/' + $("#server_name").text() + '/request_players_settings',
                     dataType: 'json',
                     success: function (response) {
-                        
                         loadSettingsPlayers (response);
                     },
                     error: function (xhr, status, error) {
@@ -263,7 +278,8 @@
                 $('#server_setup_players_owners').val(owners);
                 $('#server_setup_players_whitelist').val(whitelist);
 
-                initSettingsGameServer();
+                $("#server_setup_players_load_button").hide();
+                $("#server_setup_players_form").show();
             }
             function initSettingsGameServer ()
             {
@@ -272,7 +288,6 @@
                     url: '/server/' + $("#server_name").text() + '/request_server_settings',
                     dataType: 'json',
                     success: function (response) {
-                        
                         loadSettingsServer (response);
                     },
                     error: function (xhr, status, error) {
@@ -316,7 +331,8 @@
                 $("#server_setup_game_server_bTeamDamageEnabled").val(obj.bteamdamageenabled);
                 $("#server_setup_game_server_TeamDamageReflection").val(obj.teamdamagereflection);
 
-                initSettingsGameplay();
+                $("#server_setup_game_server_load_button").hide();
+                $("#server_setup_game_server_form").show();
             }
             function initSettingsGameplay ()
             {
@@ -325,7 +341,6 @@
                     url: '/server/' + $("#server_name").text() + '/request_gameplay_settings',
                     dataType: 'json',
                     success: function (response) {
-                        
                         loadSettingsGameplay (response);
                     },
                     error: function (xhr, status, error) {
@@ -357,15 +372,13 @@
                 $("#server_setup_gameplay_bForceCanReloadWhileAiming").val(obj.bForceCanReloadWhileAiming);
                 $("#server_setup_gameplay_bForceNoReloadWhileSprinting").val(obj.bForceNoReloadWhileSprinting);
                 $("#server_setup_gameplay_bUseHeightOverBore").val(obj.bUseHeightOverBore);
-                finishLoadingSettings();
-            }
-            function finishLoadingSettings()
-            {
-                $("#server_setup_accordion").show();
-                $("#server_setup_loading_spinner").hide();
+                
+                $("#server_setup_gameplay_load_button").hide();
+                $("#server_setup_gameplay_form").show();
             }
             function initManagementFormSubmitButton ()
             {
+                $("#server_setup_management_form").hide();
                 $("#server_setup_management_form").submit (function (event) {
                     event.preventDefault();
 
@@ -402,6 +415,7 @@
             }
             function initPlayersFormSubmitButton ()
             {
+                $("#server_setup_players_form").hide();
                 $("#server_setup_players_form").submit (function (event) {
                     event.preventDefault();
 
@@ -452,6 +466,7 @@
             }
             function initServerFormSubmitButton ()
             {
+                $("#server_setup_game_server_form").hide();
                 $("#server_setup_game_server_form").submit (function (event) {
                     event.preventDefault();
 
@@ -488,6 +503,7 @@
             }
             function initGameplayFormSubmitButton ()
             {
+                $("#server_setup_gameplay_form").hide();
                 $("#server_setup_gameplay_form").submit (function (event) {
                     event.preventDefault();
 
@@ -679,11 +695,6 @@
                 Server Settings
             </div>
             <div class="card-body"></div>
-                <div class="container d-flex justify-content-center align-items-center">
-                    <div class="spinner-border text-secondary" id="server_setup_loading_spinner" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                </div>
                 <div class="accordion" id="server_setup_accordion">
                     <div class="accordion-item" id="server_setup_management_accordion">
                         <h2 class="accordion-header" id="server_setup_management_accordion_header">
@@ -692,6 +703,7 @@
                             </button>
                         </h2>
                         <div id="server_setup_management_accordion_collapse" class="accordion-collapse collapse" data-bs-parent="#server_setup_accordion">
+                            <button id="server_setup_management_load_button" class="btn btn-primary my-3">Load Settings</button>
                             <form id="server_setup_management_form" class="p-4 bg-light" method="post">
                                 <div class="row mb-1 align-items-center">
                                     <div class="col-md-4">
@@ -811,6 +823,7 @@
                             </button>
                         </h2>
                         <div id="server_setup_players_accordion_collapse" class="accordion-collapse collapse" data-bs-parent="#server_setup_accordion">
+                            <button id="server_setup_players_load_button" class="btn btn-primary my-3">Load Settings</button>
                             <form id="server_setup_players_form" class="p-3" method="post">
                                 <div class="mb-1 form-floating">
                                     <textarea class="form-control" placeholder="Steam User ID" id="server_setup_players_admins" name="admins" rows="4"></textarea>
@@ -840,6 +853,7 @@
                             </button>
                         </h2>
                         <div id="server_setup_game_server_collapse" class="accordion-collapse collapse" data-bs-parent="#server_setup_accordion">
+                            <button id="server_setup_game_server_load_button" class="btn btn-primary my-3">Load Settings</button>
                             <form id="server_setup_game_server_form" class="p-4 bg-light">
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-md-4">
@@ -1172,6 +1186,7 @@
                             </button>
                         </h2>
                         <div id="server_setup_gameplay_collapse" class="accordion-collapse collapse" data-bs-parent="#server_setup_accordion">
+                            <button id="server_setup_gameplay_load_button" class="btn btn-primary my-3">Load Settings</button>
                             <form id="server_setup_gameplay_form" class="p-4 bg-light" method="post">
                                 <div class="row mb-1 g-3 align-items-center">
                                     <div class="col-auto">
