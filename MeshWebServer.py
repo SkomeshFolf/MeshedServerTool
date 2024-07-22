@@ -1,4 +1,5 @@
-from flask import Flask, request, Response, render_template, jsonify, g
+from flask import Flask, request, Response, render_template, jsonify, g, redirect, url_for
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_cors import CORS
 import json
 from json.decoder import JSONDecodeError
@@ -7,7 +8,7 @@ import configparser
 import threading
 import traceback
 import socket
-import requests
+import secrets
 import math
 import re
 import time
@@ -18,15 +19,52 @@ import logging
 import platform
 import waitress
 
+app_name = "Meshed Server Tool"
+app_author = "Skomesh"
+
+data_dir = platformdirs.user_data_dir (app_name, app_author, ensure_exists=True)
+secret_key_file = os.path.join (data_dir, 'secret_key')
+
+if not os.path.exists (secret_key_file):
+    with open (secret_key_file, 'w') as file:
+        file.write (secrets.token_hex (32))
+
+with open (secret_key_file, 'r') as file:
+    secret_key = file.read().strip()
+
 app = Flask(__name__)
 CORS(app)
 
 app.config['servers'] = {}
 app.config['new_reports'] = []
-app.config['lock'] = threading.Lock()
+app.config['lock'] = threading.Lock ()
+app.secret_key = secret_key
 
-app_name = "Meshed Server Tool"
-app_author = "Skomesh"
+login_manager = LoginManager ()
+login_manager.init_app (app)
+login_manager.login_view = 'web_server_login'
+
+def load_users ():
+    user_file = os.path.join (data_dir, 'users.json')
+    if os.path.exists (user_file):
+        with open (user_file, 'r') as file:
+            return json.load (file)
+    else:
+        return {}
+
+users = load_users()
+print (users)
+
+class User(UserMixin):
+    def __init__ (self, username):
+        self.id = username
+
+@login_manager.user_loader
+def load_user (user_id):
+    global users
+    if user_id in users:
+        return User (user_id)
+    return None
 
 def get_servers():
     with app.app_context():
@@ -89,6 +127,372 @@ def read_log_pages (page_size=10):
     
 def get_lock():
     return app.config['lock']
+
+
+@app.route('/update_server_info', methods=['POST'])
+def update_server_info():
+    if not request.data:
+        return jsonify({'status': 'failed', 'message': 'Empty data received'}), 204
+    try:
+        data = request.json
+
+        if 'server_info' not in data:
+            raise ValueError('Missing "server_info" key in JSON data')
+        
+        server_info_data = json.loads(data['server_info'])     
+
+        with app.app_context():
+            with get_lock():
+                get_servers().clear()
+
+                for info in server_info_data:
+                    server_name = info['server_name']
+                    server_obj = ServerInfo(name=server_name)
+                    server_obj.__dict__.update(info)
+                    get_servers()[server_name] = server_obj
+            
+            response_data = {'servers': []}
+
+            with get_lock():
+                for server_name, server in get_servers().items():
+                    server_data = {
+                        'server_name': server.server_name,
+                        'current_users': len(server.current_users),
+                        'server_status': server.server_status
+                    }
+                    response_data['servers'].append(server_data)
+
+        return jsonify(response_data)
+    except JSONDecodeError as e:
+        return jsonify({'status': 'error', 'message': 'Invalid JSON data received'}), 400
+    except Exception as e:
+            print(f"Error updating server info: {e}, {data}")
+            return 'Error updating server info', 500
+
+@app.route('/receive_new_reports', methods=['POST'])
+def receive_new_reports():
+    if not request.data:
+        return jsonify({'status': 'failed', 'message': 'Empty data received'}), 204
+    
+    try:
+        data = request.get_json()
+        reports_data = json.loads (data)
+
+        lock = get_lock ()
+        with lock:
+            app.config['new_reports'].clear()
+
+            for report in reports_data:
+                app.config['new_reports'].append (report)
+
+        return 'Sucess', 200
+
+    except JSONDecodeError as e:
+        return jsonify({'status': 'error', 'message': 'Invalid JSON data received'}), 400
+    except Exception as e:
+            print(f"Error receiving report info: {e}, {data}")
+            return 'Error receiving report info', 500
+
+@app.route('/stream_server_info')
+@login_required
+def stream_server_info():
+    def generate():
+        with app.app_context():
+            while True:
+                server_info = get_servers()
+                server_info_dicts = {
+                    server_name: {
+                        'server_name': server.name,
+                        'current_users': server.current_users,
+                        'server_status': server.server_status,
+                        'gamemode_changes': server.gamemode_changes,
+                        'server_restarts' : server.server_restarts,
+                        'current_game': server.current_game,
+                        'current_gamemode': server.current_gamemode,
+                        'previous_game': server.previous_game,
+                        'current_checkpoint': server.current_checkpoint,
+                        'last_completed_objective': server.last_completed_objective,
+                        'player_deaths': server.player_deaths,
+                        'game_attempts': server.game_attempts
+                    }
+                    for server_name, server in server_info.items()
+                }
+                yield f"data: {json.dumps(server_info_dicts)}\n\n"
+
+                time.sleep(1)
+
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/stream_all_server_logs')
+@login_required
+def stream_all_server_logs():
+    def generate():
+        with app.app_context():
+            while True:
+                logs = get_logs()
+                yield f"data: {json.dumps(logs)}\n\n"
+
+                time.sleep (2)
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/server/<server_name>/stream_server_logs')
+@login_required
+def stream_server_logs(server_name):
+    def generate():
+        with app.app_context():
+            while True:
+                logs = get_logs(server=server_name)
+                yield f"data: {json.dumps(logs)}\n\n"
+
+                time.sleep (2)
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route ('/stream_new_reports_quantity')
+@login_required
+def stream_new_reports_quantity ():
+    def generate():
+        with app.app_context():
+            while True:
+                lock = get_lock()
+                with lock:
+                    yield f"data: {json.dumps(len (app.config['new_reports']))}\n\n"
+
+                time.sleep (3)
+    return Response (generate(), mimetype='text/event-stream')
+
+@app.route ('/stream_new_reports')
+@login_required
+def stream_new_reports ():
+    def generate():
+        with app.app_context():
+            while True:
+                lock = get_lock()
+                with lock:
+                    yield f"data: {json.dumps(app.config['new_reports'])}\n\n"
+
+                time.sleep (7)
+    return Response (generate(), mimetype='text/event-stream')
+
+@app.route('/')
+@login_required
+def web_server_home ():
+    return render_template('index.html', servers=get_servers(), logs=get_logs())
+
+@app.route('/login', methods=['POST', 'GET'])
+def web_server_login ():
+    global users
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        if username in users and users[username]['password'] == password:
+            user = User (username)
+            login_user (user)
+            return redirect (url_for ('web_server_home'))
+        return render_template ('login.html'), 401
+    if users:
+        return render_template ('login.html')
+    else:
+        return redirect (url_for ('web_server_create_user'))
+
+@app.route ('/create_user', methods=['POST', 'GET'])
+def web_server_create_user ():
+    global users
+    user_file = os.path.join (data_dir, "users.json")
+    if users:
+        if current_user.is_authenticated:
+            if request.method == 'POST':
+                username = request.form['username']
+                password = request.form['password']
+                users[username] = {
+                    'password': password
+                }
+                user_json = json.dumps (users)
+                with open (user_file, 'w') as file:
+                    file.write (user_json)
+
+                return redirect (url_for ('web_server_home'))
+            return render_template ('create_user.html')
+        else:
+            return redirect (url_for ('web_server_home'))
+    else:
+        if request.method == 'POST':
+            username = request.form['username']
+            password = request.form['password']
+            users[username] = {
+                'password': password
+            }
+            user_json = json.dumps (users)
+            with open (user_file, 'w') as file:
+                file.write (user_json)
+                
+            users = load_users()
+            return redirect (url_for ('web_server_login'))
+        return render_template ('create_user.html')
+
+@app.route('/logout')
+@login_required
+def web_server_logout():
+    logout_user()
+    return redirect (url_for ('web_server_login'))
+
+@app.route('/reports')
+@login_required
+def web_server_reports ():
+    return render_template('user_reports.html', reports=app.config['new_reports'])
+
+@app.route('/server/<server_name>')
+@login_required
+def web_server_server_page(server_name):
+    server_info = get_servers()
+
+    # Find the server with the matching name in the list
+    matching_servers = [server for server in server_info.values() if server.server_name == server_name]
+
+    if matching_servers:
+        # Use the first matching server (assuming server names are unique)
+        return render_template('server.html', server=matching_servers[0])
+    else:
+        return render_template ('404_server.html')
+
+@app.route ('/create_server')
+@login_required
+def web_server_create_server_page ():
+    return render_template ('create_server.html')
+
+@app.route ('/steamcmd_guide')
+@login_required
+def steamcmd_guide ():
+    return render_template ('steamcmd_guide.html')
+
+@app.route ('/logs/<page>')
+@login_required
+def web_server_logs_page (page=1):
+    return render_template ('logs.html', page=page)
+
+@app.route ('/logs/get_max_pages', methods=['POST'])
+@login_required
+def get_log_pages ():
+    data = request.get_json ()
+    page = data.get ("page_size")
+    return jsonify (read_log_pages (page))
+
+@app.route ('/logs/get_logs', methods=['POST'])
+@login_required
+def get_page_logs ():
+    data = request.get_json()
+    page = data.get ("page")
+    page_size = data.get ("page_size")
+    return jsonify (get_logs (line_count=page_size, start_range=((page - 1) * page_size)))
+
+@app.route ('/control_server', methods=['POST'])
+@login_required
+def control_server ():
+    action = request.form.get("action")
+    server = request.form.get("server")
+    response = send_server_control (action, server)
+    return jsonify (response['message']), response['status']
+
+@app.route('/server/<server_name>/request_management_settings', methods=['POST'])
+@login_required
+def request_management_settings(server_name):
+    return jsonify(get_management_settings(server_name))
+
+@app.route('/server/<server_name>/request_players_settings', methods=['POST'])
+@login_required
+def request_players_settings(server_name):
+    return jsonify(get_players_settings(server_name))
+
+@app.route('/server/<server_name>/request_server_settings', methods=['POST'])
+@login_required
+def request_server_settings(server_name):
+    return jsonify(get_server_settings(server_name))
+
+@app.route('/server/<server_name>/request_gameplay_settings', methods=['POST'])
+@login_required
+def request_gameplay_settings(server_name):
+    return jsonify(get_gameplay_settings(server_name))
+    
+@app.route('/server/<server_name>/submit_management_settings', methods=['POST'])
+@login_required
+def submit_management_settings (server_name):
+    try:
+        result = apply_management_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/server/<server_name>/submit_players_settings', methods=['POST'])
+@login_required
+def submit_players_settings (server_name):
+    try:
+        result = apply_players_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/server/<server_name>/submit_server_settings', methods=['POST'])
+@login_required
+def submit_server_settings (server_name):
+    try:
+        result = apply_server_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/server/<server_name>/submit_gameplay_settings', methods=['POST'])
+@login_required
+def submit_gameplay_settings (server_name):
+    try:
+        result = apply_gameplay_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route ('/submit_new_server', methods=['POST'])
+@login_required
+def submit_new_server():
+    settings = request.get_json()
+
+    action = "create"
+    server = settings.get ("server_name")
+    formdata = settings
+
+    response = send_server_control (action, server, formdata=settings)
+    return jsonify (response['message']), response['status']
+    
+@app.route ('/reports/ban', methods=['POST'])
+@login_required
+def reports_ban_user():
+    try: 
+        data = request.get_data(as_text=True)
+        response = send_server_control ("ban", None, user_id=data)
+        return jsonify (response['message']), response['status']
+
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
+
+@app.route ('/reports/delete', methods=['POST'])
+@login_required
+def reports_delete_report ():
+    try: 
+        data = request.get_data (as_text=True)
+        response = send_server_control ("delete_report", None, hash=data)
+        return jsonify (response['message']), response['status']
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
+
+@app.route ('/reports/read', methods=['POST'])
+@login_required
+def reports_read_report ():
+    try: 
+        data = request.get_data (as_text=True)
+        response = send_server_control ("read_report", None, hash=data)
+        lock = get_lock ()
+        with lock:
+            app.config['new_reports'] = [obj for obj in app.config['new_reports'] if obj['hash'] != data]
+        return jsonify (response['message']), response['status']
+    except Exception as e:
+        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
 
 def get_game_server_config (server):
     server_config = get_game_server_config_paths (server)
@@ -275,288 +679,6 @@ def apply_gameplay_settings (server, settings):
         return jsonify ({"status" : "success"}), 200
     except Exception as e:
         return {"status": "error", "message": str(e)}, 500
-
-@app.route('/update_server_info', methods=['POST'])
-def update_server_info():
-    if not request.data:
-        return jsonify({'status': 'failed', 'message': 'Empty data received'}), 204
-    try:
-        data = request.json
-
-        if 'server_info' not in data:
-            raise ValueError('Missing "server_info" key in JSON data')
-        
-        server_info_data = json.loads(data['server_info'])     
-
-        with app.app_context():
-            with get_lock():
-                get_servers().clear()
-
-                for info in server_info_data:
-                    server_name = info['server_name']
-                    server_obj = ServerInfo(name=server_name)
-                    server_obj.__dict__.update(info)
-                    get_servers()[server_name] = server_obj
-            
-            response_data = {'servers': []}
-
-            with get_lock():
-                for server_name, server in get_servers().items():
-                    server_data = {
-                        'server_name': server.server_name,
-                        'current_users': len(server.current_users),
-                        'server_status': server.server_status
-                    }
-                    response_data['servers'].append(server_data)
-
-        return jsonify(response_data)
-    except JSONDecodeError as e:
-        return jsonify({'status': 'error', 'message': 'Invalid JSON data received'}), 400
-    except Exception as e:
-            print(f"Error updating server info: {e}, {data}")
-            return 'Error updating server info', 500
-
-@app.route('/receive_new_reports', methods=['POST'])
-def receive_new_reports():
-    if not request.data:
-        return jsonify({'status': 'failed', 'message': 'Empty data received'}), 204
-    
-    try:
-        data = request.get_json()
-        reports_data = json.loads (data)
-
-        lock = get_lock ()
-        with lock:
-            app.config['new_reports'].clear()
-
-            for report in reports_data:
-                app.config['new_reports'].append (report)
-
-        return 'Sucess', 200
-
-    except JSONDecodeError as e:
-        return jsonify({'status': 'error', 'message': 'Invalid JSON data received'}), 400
-    except Exception as e:
-            print(f"Error receiving report info: {e}, {data}")
-            return 'Error receiving report info', 500
-
-@app.route('/stream_server_info')
-def stream_server_info():
-    def generate():
-        with app.app_context():
-            while True:
-                server_info = get_servers()
-                server_info_dicts = {
-                    server_name: {
-                        'server_name': server.name,
-                        'current_users': server.current_users,
-                        'server_status': server.server_status,
-                        'gamemode_changes': server.gamemode_changes,
-                        'server_restarts' : server.server_restarts,
-                        'current_game': server.current_game,
-                        'current_gamemode': server.current_gamemode,
-                        'previous_game': server.previous_game,
-                        'current_checkpoint': server.current_checkpoint,
-                        'last_completed_objective': server.last_completed_objective,
-                        'player_deaths': server.player_deaths,
-                        'game_attempts': server.game_attempts
-                    }
-                    for server_name, server in server_info.items()
-                }
-                yield f"data: {json.dumps(server_info_dicts)}\n\n"
-
-                time.sleep(1)
-
-    return Response(generate(), mimetype='text/event-stream')
-
-@app.route('/stream_all_server_logs')
-def stream_all_server_logs():
-    def generate():
-        with app.app_context():
-            while True:
-                logs = get_logs()
-                yield f"data: {json.dumps(logs)}\n\n"
-
-                time.sleep (2)
-    return Response(generate(), mimetype='text/event-stream')
-
-@app.route('/server/<server_name>/stream_server_logs')
-def stream_server_logs(server_name):
-    def generate():
-        with app.app_context():
-            while True:
-                logs = get_logs(server=server_name)
-                yield f"data: {json.dumps(logs)}\n\n"
-
-                time.sleep (2)
-    return Response(generate(), mimetype='text/event-stream')
-
-@app.route ('/stream_new_reports_quantity')
-def stream_new_reports_quantity ():
-    def generate():
-        with app.app_context():
-            while True:
-                lock = get_lock()
-                with lock:
-                    yield f"data: {json.dumps(len (app.config['new_reports']))}\n\n"
-
-                time.sleep (3)
-    return Response (generate(), mimetype='text/event-stream')
-
-@app.route ('/stream_new_reports')
-def stream_new_reports ():
-    def generate():
-        with app.app_context():
-            while True:
-                lock = get_lock()
-                with lock:
-                    yield f"data: {json.dumps(app.config['new_reports'])}\n\n"
-
-                time.sleep (7)
-    return Response (generate(), mimetype='text/event-stream')
-
-@app.route('/')
-def web_server_home ():
-    return render_template('index.html', servers=get_servers(), logs=get_logs())
-
-@app.route('/reports')
-def web_server_reports ():
-    return render_template('user_reports.html', reports=app.config['new_reports'])
-
-@app.route('/server/<server_name>')
-def web_server_server_page(server_name):
-    server_info = get_servers()
-
-    # Find the server with the matching name in the list
-    matching_servers = [server for server in server_info.values() if server.server_name == server_name]
-
-    if matching_servers:
-        # Use the first matching server (assuming server names are unique)
-        return render_template('server.html', server=matching_servers[0])
-    else:
-        return render_template ('404_server.html')
-
-@app.route ('/create_server')
-def web_server_create_server_page ():
-    return render_template ('create_server.html')
-
-@app.route ('/steamcmd_guide')
-def steamcmd_guide ():
-    return render_template ('steamcmd_guide.html')
-
-@app.route ('/logs/<page>')
-def web_server_logs_page (page=1):
-    return render_template ('logs.html', page=page)
-
-@app.route ('/logs/get_max_pages', methods=['POST'])
-def get_log_pages ():
-    data = request.get_json ()
-    page = data.get ("page_size")
-    return jsonify (read_log_pages (page))
-
-@app.route ('/logs/get_logs', methods=['POST'])
-def get_page_logs ():
-    data = request.get_json()
-    page = data.get ("page")
-    page_size = data.get ("page_size")
-    return jsonify (get_logs (line_count=page_size, start_range=((page - 1) * page_size)))
-
-@app.route ('/control_server', methods=['POST'])
-def control_server ():
-    action = request.form.get("action")
-    server = request.form.get("server")
-    response = send_server_control (action, server)
-    return jsonify (response['message']), response['status']
-
-@app.route('/server/<server_name>/request_management_settings', methods=['POST'])
-def request_management_settings(server_name):
-    return jsonify(get_management_settings(server_name))
-
-@app.route('/server/<server_name>/request_players_settings', methods=['POST'])
-def request_players_settings(server_name):
-    return jsonify(get_players_settings(server_name))
-
-@app.route('/server/<server_name>/request_server_settings', methods=['POST'])
-def request_server_settings(server_name):
-    return jsonify(get_server_settings(server_name))
-
-@app.route('/server/<server_name>/request_gameplay_settings', methods=['POST'])
-def request_gameplay_settings(server_name):
-    return jsonify(get_gameplay_settings(server_name))
-    
-@app.route('/server/<server_name>/submit_management_settings', methods=['POST'])
-def submit_management_settings (server_name):
-    try:
-        result = apply_management_settings (server_name, request.get_json())
-        return result
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/server/<server_name>/submit_players_settings', methods=['POST'])
-def submit_players_settings (server_name):
-    try:
-        result = apply_players_settings (server_name, request.get_json())
-        return result
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/server/<server_name>/submit_server_settings', methods=['POST'])
-def submit_server_settings (server_name):
-    try:
-        result = apply_server_settings (server_name, request.get_json())
-        return result
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/server/<server_name>/submit_gameplay_settings', methods=['POST'])
-def submit_gameplay_settings (server_name):
-    try:
-        result = apply_gameplay_settings (server_name, request.get_json())
-        return result
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route ('/submit_new_server', methods=['POST'])
-def submit_new_server():
-    settings = request.get_json()
-
-    action = "create"
-    server = settings.get ("server_name")
-    formdata = settings
-
-    response = send_server_control (action, server, formdata=settings)
-    return jsonify (response['message']), response['status']
-    
-@app.route ('/reports/ban', methods=['POST'])
-def reports_ban_user():
-    try: 
-        data = request.get_data(as_text=True)
-        response = send_server_control ("ban", None, user_id=data)
-        return jsonify (response['message']), response['status']
-
-    except Exception as e:
-        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
-
-@app.route ('/reports/delete', methods=['POST'])
-def reports_delete_report ():
-    try: 
-        data = request.get_data (as_text=True)
-        response = send_server_control ("delete_report", None, hash=data)
-        return jsonify (response['message']), response['status']
-    except Exception as e:
-        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
-
-@app.route ('/reports/read', methods=['POST'])
-def reports_read_report ():
-    try: 
-        data = request.get_data (as_text=True)
-        response = send_server_control ("read_report", None, hash=data)
-        lock = get_lock ()
-        with lock:
-            app.config['new_reports'] = [obj for obj in app.config['new_reports'] if obj['hash'] != data]
-        return jsonify (response['message']), response['status']
-    except Exception as e:
-        return jsonify ({"status": "error", "message": str(traceback.format_exc())}), 500
 
 
 def send_server_control (action, server=None, **kwargs):
