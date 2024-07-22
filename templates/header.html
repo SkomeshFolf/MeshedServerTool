@@ -1,0 +1,76 @@
+<header>
+    <script>
+        $(document).ready (function () {
+            updateBadge (0);
+            initReportStream();
+        });
+        function updateBadge (reports)
+        {
+            if (reports == 0)
+            {
+                $("#header_reports_badge").hide();
+            }
+            else
+            {
+                $("#header_reports_badge").show();
+                $("#header_reports_badge").text(reports);
+            }
+        }
+        function initReportStream()
+        {
+            var logEventSource = new EventSource ('/stream_new_reports_quantity');
+            logEventSource.addEventListener('message', update_reports);
+        }
+        function update_reports (event)
+        {
+            var reports = JSON.parse (event.data);
+            
+            updateBadge (reports);
+        }
+    </script>
+
+    <nav class="navbar navbar-expand-lg px-3 py-2 mb-5 rounded-bottom navbar-light bg-light">
+        <div class="container-fluid">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul class="navbar-nav my-2 my-md-0 text-small ms-auto me-auto">
+                    <li class="nav-item mx-2">
+                        <a href="{{ url_for('web_server_home')}}" class="nav-link d-flex flex-column align-items-center">
+                            <img src="{{ url_for('static', filename='icon_dashboard.svg') }}" class="bi mb-1" width="32" height="32">
+                            <span class="d-none d-md-block">Dashboard</span>
+                        </a>
+                    </li>
+                    <li class="nav-item mx-2">
+                        <a href="{{ url_for('web_server_reports')}}" class="nav-link d-flex flex-column align-items-center">
+                            <img src="{{ url_for('static', filename='icon_reports.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            <span class="d-none d-md-block">Reports</span>
+                            <span class="position-relative badge rounded-pill bg-danger" id ="header_reports_badge" style="bottom:64px; left:24px">
+                                1
+                            </span>
+                        </a>
+                    </li>
+                    <li class="nav-item mx-2">
+                        <a href="{{ url_for ('web_server_logs_page', page=1) }}" class="nav-link d-flex flex-column align-items-center">
+                            <img src="{{ url_for('static', filename='icon_logs.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            <span class="d-none d-md-block">Logs</span>
+                        </a>
+                    </li>
+                    <li class="nav-item mx-2">
+                        <a href="{{ url_for ('web_server_create_server_page')}}" class="nav-link d-flex flex-column align-items-center"> 
+                            <img src="{{ url_for('static', filename='icon_create.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            <span class="d-none d-md-block">Add Server</span>
+                        </a>
+                    </li>
+                    <li class="nav-item mx-2">
+                        <a href="{{ url_for ('web_server_logout')}}" class="nav-link d-flex flex-column align-items-center">
+                            <img src="{{ url_for('static', filename='icon_logout.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            <span class="d-none d-md-block">Logout</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</header>

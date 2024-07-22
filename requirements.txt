@@ -1,6 +1,10 @@
 pygtail
 requests
 psutil
+platformdirs
+chardet
 flask
+flask-login
+flask-cors
 flask-bootstrap
-gunicorn
+waitress

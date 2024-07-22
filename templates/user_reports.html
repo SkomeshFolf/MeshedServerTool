@@ -1,43 +1,246 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Reports</title>
-    <!-- Bootstrap CSS (replace the link with your local or CDN reference) -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <style>
-        body {
-            padding: 20px;
+    {% include 'head.html' %}
+
+    <script>
+        var reports = [];
+        var selectedReport = null;
+
+        $(document).ready (function () {
+            reports = loadReports();
+            addAllReports();
+            initRespondButtons();
+            initLiveReportStream();
+            $("#respondReportBtn").prop('disabled', true);
+        });
+        function addAllReports ()
+        {
+            var $reportList = $('#reportList');
+            $reportList.empty(); // Clear existing items
+
+            reports.forEach((report, index) => {
+                var listItem = `
+                    <a href="#" class="list-group-item list-group-item-action" onclick="displayReportDetails(${index})">
+                        ${report.target}
+                    </a>
+                `;
+                $reportList.append(listItem);
+            });
         }
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
+        function displayReportDetails (index)
+        {
+            selectedReport = reports[index];
+            if (selectedReport) 
+            {
+                $('#reportTarget').text(`${selectedReport.target} (${selectedReport.target_id})`);
+                $('#reportSource').text(`${selectedReport.source} (${selectedReport.source_id})`);
+                $('#reportDate').text(formatDateTime (selectedReport.date));
+                $('#reportReason').text(selectedReport.reason);
+                $('#reportText').text(selectedReport.text);
+                $('#reportHash').text(selectedReport.hash);
+                $('#modalUsername').text(`${selectedReport.target} (${selectedReport.target_id})`);
+                $("#respondReportBtn").prop('disabled', false);
+            }
+            else
+            {
+                $('#reportTarget').text('Click on a new report to view');
+                $('#reportSource').text('Click on a new report to view');
+                $('#reportDate').text('Click on a new report to view');
+                $('#reportReason').text('Click on a new report to view');
+                $('#reportText').text('Click on a new report to view');
+                $('#reportHash').text('N/A');
+                $('#modalUsername').text(`${selectedReport.target} (${selectedReport.target_id})`);
+                $("#respondReportBtn").prop('disabled', true);
+            }
         }
-        .list-group-item {
-            cursor: pointer;
+        function formatDateTime(dateTime) {
+            // Split the input into date and time components
+            const [datePart, timePart] = dateTime.split('-');
+            const [year, month, day] = datePart.split('.');
+            const [hours, minutes, seconds] = timePart.split('.');
+
+            // Create a Date object
+            const dateObj = new Date(year, month - 1, day, hours, minutes, seconds);
+
+            // Options for formatting
+            const options = {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true // 12-hour format with AM/PM
+            };
+
+            // Format the date
+            return dateObj.toLocaleString('en-US', options);
         }
-        .list-group-item:hover {
-            background-color: #f8f9fa;
+        function initRespondButtons ()
+        {
+            $("#banBtn").click (function () {
+                $.ajax({
+                    url: "/reports/ban",
+                    type: 'POST',
+                    contentType: 'text/plain',
+                    data: selectedReport['target_id'],
+                    success: function(response) {
+                        createAlertToast ("Success", "User has been added to the ban list of all servers, however you must restart your servers for changes to apply.")
+                    },
+                    error: function(xhr, status, error) {
+                        createAlertToast ("Error", "Communication error or error banning user. " + error);
+                        console.log (error);
+                    }
+                });
+            });
+            /*
+            $("#deleteReportBtn").click (function () {
+                $.ajax({
+                    url: "/reports/delete",
+                    type: 'POST',
+                    contentType: 'text/plain',
+                    data: selectedReport['hash'],
+                    success: function(response) {
+                        createAlertToast ("Success", "Report deleted.")
+                    },
+                    error: function(xhr, status, error) {
+                        createAlertToast ("Error", "Communication error or error deleting report." + error);
+                        console.log (error);
+                    }
+                });
+            });
+            */
+            $("#readReportBtn").click (function () {
+                $("#respondReportBtn").prop('disabled', true);
+                reports = reports.filter (obj => obj.hash !== selectedReport['hash']);
+                addAllReports();
+                console.log (reports);
+                $.ajax({
+                    url: "/reports/read",
+                    type: 'POST',
+                    contentType: 'text/plain',
+                    data: selectedReport['hash'],
+                    success: function(response) {
+                        createAlertToast ("Success", "Report marked as read.");
+                    },
+                    error: function(xhr, status, error) {
+                        createAlertToast ("Error", "Communication error or error deleting report." + error);
+                        console.log (error);
+                    }
+                });
+            });
         }
-    </style>
+        function createAlertToast (title, body)
+        {
+            var toastHTML = `
+                <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header">
+                    <strong class="me-auto">${title}</strong>
+                    <small class="text-muted">just now</small>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                    ${body}
+                </div>
+                </div>
+            `;
+            var $toast = $(toastHTML);
+            $('#toast-container').append($toast);
+
+            var toast = new bootstrap.Toast($toast[0], {
+                autohide: true,
+                delay: 5000
+            });
+
+            toast.show();
+        }
+        function initLiveReportStream()
+        {
+            var logEventSource = new EventSource ('/stream_new_reports');
+            logEventSource.addEventListener('message', updateNewReports);
+        }
+        function updateNewReports (event)
+        {
+            reports = [];
+            reports = JSON.parse (event.data);
+
+            addAllReports();
+        }
+        // Marked as a syntax error, Flask fixes this in runtime. Ignore.
+        function loadReports ()
+        {
+            return {{ reports|tojson|safe }}; 
+        }
+    </script>
 </head>
 <body>
-    <div class="container">
-        <h1>User Reports</h1>
+    {% include 'header.html' %}
 
-        <ul class="list-group">
-            {% for report in user_reports %}
-                <li class="list-group-item">
-                    <strong>{{ report.username }}</strong>: {{ report.report }}
-                </li>
-            {% endfor %}
-        </ul>
+    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 11"></div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Left Panel -->
+            <div class="col-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">New Reports</h5>
+                    </div>
+                    <div class="list-group list-group-flush" id="reportList">
+                        <a href="#" class="list-group-item list-group-item-action" onclick="displayReportDetails(0)">User1 (001)</a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="displayReportDetails(1)">User2 (002)</a>
+                        <a href="#" class="list-group-item list-group-item-action" onclick="displayReportDetails(2)">User3 (003)</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Panel -->
+            <div class="col-9">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Report Details</h3>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Report Target:</strong> <span id="reportTarget">Click on a new report to view</span></p>
+                        <p><strong>Reporter:</strong> <span id="reportSource">Click on a new report to view</span></p>
+                        <p><strong>Date and Time:</strong> <span id="reportDate">Click on a new report to view</span></p>
+                        <p><strong>Reason:</strong> <span id="reportReason">Click on a new report to view</span></p>
+                        <p><strong>Description:</strong> <span id="reportText">Click on a new report to view</span></p>
+                    </div>
+                    <div class="card-footer d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Report Hash: <span id="reportHash">N/A</span></small>
+                        <div>
+                            <button class="btn btn-success me-2" id="respondReportBtn" data-bs-toggle="modal" data-bs-target="#responseModal">Respond to Report</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
-    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <div class="modal fade" id="responseModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="responseModalLabel">Respond to Report</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <p class="my-auto">User: <span id="modalUsername"></span></p>
+                        <button type="button" id="banBtn" class="btn btn-danger">Ban User</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="d-flex justify-content-between flex-row-reverse">
+                        <button type="button" id="deleteReportBtn" class="btn btn-warning d-none">Delete Report</button>
+                        <button type="button" id="readReportBtn" class="btn btn-success" data-bs-dismiss="modal" aria-label="Close">Mark as Read</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

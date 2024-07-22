@@ -1,63 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ server.server_name }} Details</title>
-    <!-- Bootstrap CSS (replace the link with your local or CDN reference) -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <style>
-        body {
-            padding: 20px;
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .card {
-            margin-bottom: 20px;
-        }
-        .card-header {
-            background-color: #007bff;
-            color: #fff;
-        }
-        .console-log, .log-entries {
-            max-height: 200px;
-            overflow: auto;
-            border: 1px solid #ccc;
-            padding: 10px;
-        }
-    </style>
-    <!-- Bootstrap JS (replace the link with your local or CDN reference) -->
-    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <title>{{ server.server_name }}</title>
+    {% include 'head.html' %}
     <script>
         $(document).ready(function() {
-            var status = $("#stats_status").text();
-            if (status == 'Offline' || status == 'Suspended' || status == 'Crashed' || status == 'Stopping')
-            {
-                $("#killServerBtn").hide();
-                $("#stopServerBtn").hide();
-                $("#restartServerBtn").hide();
-            }
-            else if (status == 'Waking' || status == 'Starting' || status == 'Restarting' || status == 'Idle' || status == 'Active')
-            {
-                $("#startServerBtn").hide();
-            }
+            initButtonVisibility();
+            initButtonClickListeners();
+            initEventListening();
+            initSettingForms();
+            initLogStreams ();
+            disableAllGameplaySettings (true)
 
-            $("#killServerBtn").click (function() {
-                sendServerControlRequest ('kill');
-            });
-            $("#stopServerBtn").click (function() {
-                sendServerControlRequest ('stop');
-            });
-            $("#restartServerBtn").click (function() {
-                sendServerControlRequest ('restart');
-            });
-            $("#startServerBtn").click (function() {
-                sendServerControlRequest ('start');
-            });
+            $("#server_setup_game_server_ServerPassword").prop("disabled", true);
 
             function sendServerControlRequest(action) 
             {
@@ -66,38 +21,628 @@
                     url: '/control_server',
                     data: { action: action, server: $("#server_name").text() },
                     success: function(response) {
-                        console.log(response);
+                        createAlertToast ("Success", "Sending " + action + " action to server.");
                         // Handle the response as needed
                     },
                     error: function(error) {
+                        createAlertToast ("Error", "Failed sending " + action + " action to server. " + error);
                         console.error('Error:', error);
                     }
                 });
+            }
+            function update_server_info (event)
+            {
+                var server_name = $("#server_name").text();
+                var json_data = JSON.parse (event.data);
+                var server_list = Object.values (json_data);
+                var server_info = server_list.find (function (item){
+                    return item.server_name === server_name;
+                });
+
+                // Update server stats
+                updateServerStats(server_info);
+                
+                // Update status badge
+                updateStatusBadge(server_info);
+
+                // Update user counts
+                updateUserCounts(server_info);
+
+                // Update hidden and visible buttons
+                manageButtonVisibility(server_info);
+            }
+            function initButtonClickListeners ()
+            {
+                $("#killServerBtn").click (function() {
+                    sendServerControlRequest ('kill');
+                });
+                $("#stopServerBtn").click (function() {
+                    sendServerControlRequest ('stop');
+                });
+                $("#restartServerBtn").click (function() {
+                    sendServerControlRequest ('restart');
+                });
+                $("#startServerBtn").click (function() {
+                    sendServerControlRequest ('start');
+                });
+                $("#server_setup_gameplay_bOverrideDefaults").change(function() {
+                    disableAllGameplaySettings(!($(this).is(":checked")));
+                });
+                $("#server_setup_game_server_bUseServerPassword").change (function() {
+                    $("#server_setup_game_server_ServerPassword").prop("disabled", !($(this).is(":checked")));
+                });
+            }
+            function disableAllGameplaySettings (disabled)
+            {
+                $("#server_setup_gameplay_RecoilMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_SpreadMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_bCanSprint").prop("disabled", disabled);
+                $("#server_setup_gameplay_MovementSpeedMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_CharacterDamageMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_CharacterHealthMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_LandingSprintDelay").prop("disabled", disabled);
+                $("#server_setup_gameplay_LandingJumpDelay").prop("disabled", disabled);
+                $("#server_setup_gameplay_bForceFreeAimMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_ADSFreeAimMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_FreeAimMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_ADSSpeedMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_RecoilMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_ReloadSpeedMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_SmoothAimMultiplier").prop("disabled", disabled);
+                $("#server_setup_gameplay_CanADSInNightVision").prop("disabled", disabled);
+                $("#server_setup_gameplay_bCanBracedAim").prop("disabled", disabled);
+                $("#server_setup_gameplay_bForceCanReloadWhileAiming").prop("disabled", disabled);
+                $("#server_setup_gameplay_bForceNoReloadWhileSprinting").prop("disabled", disabled);
+                $("#server_setup_gameplay_bUseHeightOverBore").prop("disabled", disabled);
+            }
+            function updateServerStats (server_info)
+            {
+                $('#text_restarts').text(server_info.server_restarts);
+                $('#text_gamemode_changes').text(server_info.gamemode_changes);
+                $('#text_previous_game').text(server_info.previous_game);
+                $('#text_game').text(server_info.current_game);
+                $('#text_gamemode').text(server_info.current_gamemode);
+                $('#text_checkpoint').text(server_info.current_checkpoint);
+                $('#text_objective').text(server_info.last_completed_objective);
+                $('#text_deaths').text(server_info.player_deaths);
+                $('#text_attempts').text (server_info.game_attempts);
+            }
+            function updateStatusBadge (server_info)
+            {
+                var badge_class = {
+                    'Creating': 'badge bg-info',
+                    'Offline': 'badge bg-secondary',
+                    'Crashed': 'badge bg-danger',
+                    'Suspended': 'badge bg-info',
+                    'Stopping': 'badge bg-warning',
+                    'Waking': 'badge bg-info',
+                    'Starting': 'badge bg-warning',
+                    'Restarting': 'badge bg-warning',
+                    'Idle': 'badge bg-secondary',
+                    'Active': 'badge bg-success',
+                    'Game Ended': 'badge bg-success',
+                    'Game Starting': 'badge bg-success'
+                }[server_info.server_status];
+                $('#status_badge').removeClass().addClass('badge ' + badge_class).text('Status: ' + server_info.server_status);
+            }
+            function initEventListening ()
+            {
+                var eventSource = new EventSource ('/stream_server_info');
+                eventSource.addEventListener('message', update_server_info);
+            }
+            function manageButtonVisibility (server_info)
+            {
+                if (server_info.server_status == 'Offline' || server_info.server_status == 'Suspended' || server_info.server_status == 'Crashed')
+                {
+                    $("#killServerBtn").hide();
+                    $("#stopServerBtn").hide();
+                    $("#restartServerBtn").hide();
+                    $("#startServerBtn").show();
+                    $("#killServerBtn").prop("disabled", false);
+                    $("#stopServerBtn").prop("disabled", false);
+                }
+                else if (server_info.server_status == 'Waking' || server_info.server_status == 'Starting' || server_info.server_status == 'Restarting' || server_info.server_status == 'Idle' || server_info.server_status == 'Active' || server_info.server_status == 'Game Ended' || server_info.server_status == "Game Starting")
+                {
+                    $("#startServerBtn").hide();
+                    $("#killServerBtn").show();
+                    $("#stopServerBtn").show();
+                    $("#restartServerBtn").show();
+                    $("#killServerBtn").prop("disabled", false);
+                    $("#stopServerBtn").prop("disabled", false);
+                }
+                else if (server_info.server_status == 'Stopping')
+                {
+                    $("#killServerBtn").prop("disabled", true);
+                    $("#stopServerBtn").prop("disabled", true);
+                }
+            }
+            function initButtonVisibility ()
+            {
+                var status = $("#stats_status").text();
+                if (status == 'Offline' || status == 'Suspended' || status == 'Crashed' || status == 'Stopping')
+                {
+                    $("#killServerBtn").hide();
+                    $("#stopServerBtn").hide();
+                    $("#restartServerBtn").hide();
+                }
+                else if (status == 'Waking' || status == 'Starting' || status == 'Restarting' || status == 'Idle' || status == 'Active')
+                {
+                    $("#startServerBtn").hide();
+                }
+            }
+            function updateUserCounts (server_info)
+            {
+                var user_count = server_info.current_users.length
+                $("#text_user_count").text (user_count);
+
+                if (user_count == 0)
+                {
+                    $("#player_list").hide();
+                    $('#player_list').empty();
+                    $("#no_players").show();
+                }
+                else
+                {
+                    $('#player_list').empty();
+                    for (var i = 0; i < user_count; i++)
+                    {
+                        var element = server_info.current_users[i];
+                        var listItem = $('<li></li>').addClass('list-group-item');
+                        listItem.text(element);
+                        $('#player_list').append(listItem);
+                    }
+                    $("#player_list").show();
+                    $("#no_players").hide();
+                }
+            }
+            function initSettingForms ()
+            {
+                initLoadingButtons ();
+                initManagementFormSubmitButton();
+                initPlayersFormSubmitButton();
+                initServerFormSubmitButton();
+                initGameplayFormSubmitButton();
+            }
+            function initLoadingButtons ()
+            {
+                $("#server_setup_management_load_button").click (function () {
+                    initSettingsManagement();
+                    $(this).prop('disabled', true);
+                });
+                $("#server_setup_players_load_button").click (function () {
+                    initSettingsPlayers();
+                    $(this).prop('disabled', true);
+                });
+                $("#server_setup_game_server_load_button").click (function () {
+                    initSettingsGameServer();
+                    $(this).prop('disabled', true);
+                });
+                $("#server_setup_gameplay_load_button").click (function () {
+                    initSettingsGameplay();
+                    $(this).prop('disabled', true);
+                });
+            }
+            function initSettingsManagement ()
+            {
+                $.ajax ({
+                    type: 'POST',
+                    url: '/server/' + $("#server_name").text() + '/request_management_settings',
+                    dataType: 'json',
+                    success: function (response) {
+                        loadSettingsManagement (response);
+                    },
+                    error: function (xhr, status, error) {
+                        console.error (error);
+                    }
+                });
+            }
+            function loadSettingsManagement (obj)
+            {
+                var shared_dir = obj.General.shared_install_dir === "True";
+                $("#server_setup_management_sharedDirectory").prop ('checked', shared_dir);
+                $("#server_setup_management_serverName").val (obj.General.server_name);
+                $("#server_setup_management_installDir").val (obj.General.install_dir);
+                $("#server_setup_management_maxReloads").val (obj.General.max_reloads);
+                $("#server_setup_management_port").val (obj.General.port);
+                $("#server_setup_management_queryPort").val (obj.General.queryport);
+                $("#server_setup_management_installDir").val (obj.General.install_dir);
+                $('#server_setup_management_startingGamemode').val(obj.General.starting_gamemode);
+                $('#server_setup_management_restrictedGamemode').val(obj.General.restricted_gamemode);
+                var serverArgs = obj.General.server_args.split (',').join('\n');
+                $("#server_setup_management_args").val(serverArgs);
+
+                $("#server_setup_management_load_button").hide();
+                $("#server_setup_management_form").show();
+            }
+            function initSettingsPlayers ()
+            {
+                $.ajax ({
+                    type: 'POST',
+                    url: '/server/' + $("#server_name").text() + '/request_players_settings',
+                    dataType: 'json',
+                    success: function (response) {
+                        loadSettingsPlayers (response);
+                    },
+                    error: function (xhr, status, error) {
+                        console.error (error);
+                    }
+                });
+            }
+            function loadSettingsPlayers (obj)
+            {
+                var admins = obj.admins.join('\n');
+                var owners = obj.owners.join('\n');
+                var whitelist = obj.whitelist.join('\n');
+
+                $('#server_setup_players_admins').val(admins);
+                $('#server_setup_players_owners').val(owners);
+                $('#server_setup_players_whitelist').val(whitelist);
+
+                $("#server_setup_players_load_button").hide();
+                $("#server_setup_players_form").show();
+            }
+            function initSettingsGameServer ()
+            {
+                $.ajax ({
+                    type: 'POST',
+                    url: '/server/' + $("#server_name").text() + '/request_server_settings',
+                    dataType: 'json',
+                    success: function (response) {
+                        loadSettingsServer (response);
+                    },
+                    error: function (xhr, status, error) {
+                        console.error (error);
+                    }
+                });
+            }
+            function loadSettingsServer (obj)
+            {
+                $("#server_setup_game_server_servername").val (obj.servername);
+                $("#server_setup_game_server_ZombieSpawnAmount").val (obj.zombiespawnamount);
+                $("#server_setup_game_server_RespawnTime").val (obj.respawntime);
+                $("#server_setup_game_server_MaxZombieCount").val (obj.maxzombiecount);
+                $("#server_setup_game_server_RoundTimer").val (obj.roundtimer);
+                $("#server_setup_game_server_ResetZombieSpawners").val (obj.resetzombiespawners);
+                $("#server_setup_game_server_ZombieRespawnTime").val (obj.zombierespawntime);
+                $("#server_setup_game_server_DisableGodmode").val(obj.disablegodmode);
+                $("#server_setup_game_server_ScoreToWin").val(obj.scoretowin);
+                $("#server_setup_game_server_ServerName").val(obj.servername);
+                $("#server_setup_game_server_MaxPlayerCount").val(obj.maxplayercount);
+                $("#server_setup_game_server_bRestartServerEachGame").val(obj.brestartservereachgame);
+                $("#server_setup_game_server_bUseSeamlessTravel").val(obj.buseseamlesstravel);
+                $("#server_setup_game_server_bAnyoneUseADminCam").val(obj.banyoneuseadmincam);
+                var password_enabled = obj.buseserverpassword === "True";
+                $("#server_setup_game_server_bUseServerPassword").prop("checked", password_enabled);
+                $("#server_setup_game_server_ServerPassword").val(obj.serverpassword);
+                $("#server_setup_game_server_MaxGameBans").val(obj.maxgamebans);
+                $("#server_setup_game_server_MaxVACBans").val(obj.maxvacbans);
+                $("#server_setup_game_server_MinDaysSinceLastBan").val(obj.mindayssincelastban);
+                $("#server_setup_game_server_bDenyVACBan").val(obj.bdenyvacban);
+                $("#server_setup_game_server_bDenyGameBan").val(obj.bdenygameban);
+                $("#server_setup_game_server_bDenyCommunityBan").val(obj.bdenycommunityban);
+                $("#server_setup_game_server_bUseWhitelist").val(obj.busewhitelist);
+                $("#server_setup_game_server_bFriendsOnly").val(obj.bfriendsonly);
+                $("#server_setup_game_server_bUseLAN").val(obj.buselan);
+                $("#server_setup_game_server_EmptyServerRestartTime").val(obj.emptyserverrestarttime);
+                $("#server_setup_game_server_AFKTimer").val(obj.afktimer);
+                $("#server_setup_game_server_bShouldAdvertise").val(obj.bshouldadvertise);
+                $("#server_setup_game_server_bAdminsAlwaysJoin").val(obj.badminsalwaysjoin);
+                $("#server_setup_game_server_bDevsAlwaysJoin").val(obj.bdevsalwaysjoin);
+                $("#server_setup_game_server_bTeamDamageEnabled").val(obj.bteamdamageenabled);
+                $("#server_setup_game_server_TeamDamageReflection").val(obj.teamdamagereflection);
+
+                $("#server_setup_game_server_load_button").hide();
+                $("#server_setup_game_server_form").show();
+            }
+            function initSettingsGameplay ()
+            {
+                $.ajax ({
+                    type: 'POST',
+                    url: '/server/' + $("#server_name").text() + '/request_gameplay_settings',
+                    dataType: 'json',
+                    success: function (response) {
+                        loadSettingsGameplay (response);
+                    },
+                    error: function (xhr, status, error) {
+                        console.error (error);
+                    }
+                });
+            }
+            function loadSettingsGameplay (obj)
+            {
+                var overrides_enabled = obj.bOverrideDefaults === "True";
+                $("#server_setup_gameplay_bOverrideDefaults").prop("checked", overrides_enabled);
+                $("#server_setup_gameplay_RecoilMultiplier").val (obj.RecoilMultiplier);
+                $("#server_setup_gameplay_SpreadMultiplier").val(obj.SpreadMultiplier);
+                $("#server_setup_gameplay_bCanSprint").val(obj.bCanSprint);
+                $("#server_setup_gameplay_MovementSpeedMultiplier").val(obj.MovementSpeedMultiplier);
+                $("#server_setup_gameplay_CharacterDamageMultiplier").val(obj.CharacterDamageMultiplier);
+                $("#server_setup_gameplay_CharacterHealthMultiplier").val(obj.CharacterHealthMultiplier);
+                $("#server_setup_gameplay_LandingSprintDelay").val(obj.LandingSprintDelay);
+                $("#server_setup_gameplay_LandingJumpDelay").val(obj.LandingJumpDelay);
+                $("#server_setup_gameplay_bForceFreeAimMultiplier").val(obj.bForceFreeAimMultiplier);
+                $("#server_setup_gameplay_ADSFreeAimMultiplier").val(obj.ADSFreeAimMultiplier);
+                $("#server_setup_gameplay_FreeAimMultiplier").val(obj.FreeAimMultiplier)
+                $("#server_setup_gameplay_ADSSpeedMultiplier").val(obj.ADSSpeedMultiplier);
+                $("#server_setup_gameplay_RecoilMultiplier").val(obj.RecoilMultiplier);
+                $("#server_setup_gameplay_ReloadSpeedMultiplier").val(obj.ReloadSpeedMultiplier);
+                $("#server_setup_gameplay_SmoothAimMultiplier").val(obj.SmoothAimMultiplier);
+                $("#server_setup_gameplay_CanADSInNightVision").val(obj.bCanADSInNightVision);
+                $("#server_setup_gameplay_bCanBracedAim").val(obj.bCanBracedAim);
+                $("#server_setup_gameplay_bForceCanReloadWhileAiming").val(obj.bForceCanReloadWhileAiming);
+                $("#server_setup_gameplay_bForceNoReloadWhileSprinting").val(obj.bForceNoReloadWhileSprinting);
+                $("#server_setup_gameplay_bUseHeightOverBore").val(obj.bUseHeightOverBore);
+                
+                $("#server_setup_gameplay_load_button").hide();
+                $("#server_setup_gameplay_form").show();
+            }
+            function initManagementFormSubmitButton ()
+            {
+                $("#server_setup_management_form").hide();
+                $("#server_setup_management_form").submit (function (event) {
+                    event.preventDefault();
+
+                    var serverName = $("#server_name").text();
+                    var actionURL = '/server/' + serverName + '/submit_management_settings';
+
+                    $(this).attr('action', actionURL);
+
+                    var formData = $(this).serialize();
+                    var keyValuePairs = formData.split ('&');
+                    var jsonObject = {};
+
+                    keyValuePairs.forEach(function (pair) {
+                        var keyValue = pair.split ('=');
+                        jsonObject [keyValue[0]] = decodeURIComponent (keyValue[1]);
+                    });
+
+                    jsonObject.shared_install_dir = $("#server_setup_management_sharedDirectory").is(":checked");
+
+                    $.ajax ({
+                        url: actionURL,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(jsonObject),
+                        success: function (response) {
+                            createRestartServerToast ("Success", "You may need to restart your server for some changes to apply");
+                        },
+                        error: function (xhr, status, error) {
+                            createRestartServerToast ("Error", "Error applying changes: " + error);
+                            console.error (error);
+                        }
+                    });
+                });
+            }
+            function initPlayersFormSubmitButton ()
+            {
+                $("#server_setup_players_form").hide();
+                $("#server_setup_players_form").submit (function (event) {
+                    event.preventDefault();
+
+                    var serverName = $("#server_name").text();
+                    var actionURL = '/server/' + serverName + '/submit_players_settings';
+
+                    $(this).attr('action', actionURL);
+
+                    var formData = $(this).serialize();
+                    var keyValuePairs = formData.split ('&');
+                    var jsonObject = {};
+
+                    keyValuePairs.forEach(function(pair) {
+                        var keyValue = pair.split('=');
+                        var key = keyValue[0];
+                        var value = decodeURIComponent(keyValue[1]);
+                        
+                        // Split value by newline characters into an array
+                        if (value.includes('\r\n')) {
+                            jsonObject[key] = value.split('\r\n');
+                        } else {
+                            jsonObject[key] = [value]; // Make sure it's always an array
+                        }
+                    });
+
+                    $.ajax ({
+                        url: actionURL,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(jsonObject),
+                        success: function (response) {
+                            var sharedDir = $("#server_setup_management_sharedDirectory").is(":checked");
+                            if (sharedDir)
+                            {
+                                createAlertToast ("Success", "You must restart each server that uses this directory for changes to individually apply.");
+                            }
+                            else
+                            {
+                                createRestartServerToast ("Success", "You must restart the server for changes to apply.");
+                            }
+                        },
+                        error: function (xhr, status, error) {
+                            createRestartServerToast ("Error", "Error applying changes: " + error);
+                            console.error (error);
+                        }
+                    });
+                });
+            }
+            function initServerFormSubmitButton ()
+            {
+                $("#server_setup_game_server_form").hide();
+                $("#server_setup_game_server_form").submit (function (event) {
+                    event.preventDefault();
+
+                    var serverName = $("#server_name").text();
+                    var actionURL = '/server/' + serverName + '/submit_server_settings';
+
+                    $(this).attr('action', actionURL);
+
+                    var formData = $(this).serialize();
+                    var keyValuePairs = formData.split ('&');
+                    var jsonObject = {};
+
+                    keyValuePairs.forEach(function (pair) {
+                        var keyValue = pair.split ('=');
+                        jsonObject [keyValue[0]] = decodeURIComponent (keyValue[1]);
+                    });
+
+                    jsonObject.bUseServerPassword = $("#server_setup_game_server_bUseServerPassword").is (":checked");
+
+                    $.ajax ({
+                        url: actionURL,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(jsonObject),
+                        success: function (response) {
+                            createRestartServerToast ("Success", "You must restart your server for changes to apply");
+                        },
+                        error: function (xhr, status, error) {
+                            createRestartServerToast ("Error", "Error applying changes: " + error);
+                            console.error (error);
+                        }
+                    });
+                });
+            }
+            function initGameplayFormSubmitButton ()
+            {
+                $("#server_setup_gameplay_form").hide();
+                $("#server_setup_gameplay_form").submit (function (event) {
+                    event.preventDefault();
+
+                    var serverName = $("#server_name").text();
+                    var actionURL = '/server/' + serverName + '/submit_gameplay_settings';
+
+                    $(this).attr('action', actionURL);
+
+                    var formData = $(this).serialize();
+                    var keyValuePairs = formData.split('&');
+                    var jsonObject = {};
+
+                    // Iterate over each key-value pair
+                    keyValuePairs.forEach(function(pair) {
+                        var keyValue = pair.split('=');
+                        jsonObject[keyValue[0]] = keyValue[1];
+                    });
+
+                    jsonObject.bOverrideDefaults = $("#server_setup_gameplay_bOverrideDefaults").is(":checked");
+
+                    $.ajax ({
+                        url: actionURL,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(jsonObject),
+                        success: function (response) {
+                            createRestartServerToast ("Success", "You must restart your server for changes to apply");
+                        },
+                        error: function (xhr, status, error) {
+                            createRestartServerToast ("Error", "Error applying changes: " + error);
+                            console.error (error);
+                        }
+                    });
+                });
+            }
+            function createAlertToast (title, body)
+            {
+                var toastHTML = `
+                    <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <strong class="me-auto">${title}</strong>
+                        <small class="text-muted">just now</small>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${body}
+                    </div>
+                    </div>
+                `;
+                var $toast = $(toastHTML);
+                $('#toast-container').append($toast);
+
+                var toast = new bootstrap.Toast($toast[0], {
+                    autohide: true,
+                    delay: 5000
+                });
+
+                toast.show();
+            }
+            function createRestartServerToast (title, body)
+            {
+                var toastHTML = `
+                    <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <strong class="me-auto">${title}</strong>
+                        <small class="text-muted">just now</small>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${body}
+                        <div class="mt-2 pt-2 border-top">
+                            <button type="button" class="btn btn-warning btn-sm restart-btn" data-bs-dismiss="toast" aria-label="Close">Restart Server Now</button>
+                        </div>
+                    </div>
+                    </div>
+                `;
+                var $toast = $(toastHTML);
+                $('#toast-container').append($toast);
+
+                var toast = new bootstrap.Toast($toast[0], {
+                    autohide: true,
+                    delay: 10000
+                });
+
+                toast.show();
+
+                $toast.find ('.restart-btn').on('click', function () {
+                    sendServerControlRequest ('restart');
+                });
+            }
+            function initLogStreams()
+            {
+                var logEventSource = new EventSource ('/server/' + $("#server_name").text() + '/stream_server_logs');
+                logEventSource.addEventListener('message', update_logs);
+            }
+            function update_logs (event)
+            {
+                var logs = JSON.parse (event.data);
+                
+                $('#logs').empty();
+                for (var i = 0; i < logs.length; i++)
+                {
+                    var element = logs[i];
+                    var listItem = $('<li></li>').addClass('list-group-item');
+                    listItem.text(element);
+                    $('#logs').append(listItem);
+                }
             }
         });
     </script>
 </head>
 <body>
+    {% include 'header.html' %}
+
+    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 11"></div>
+
     <p style="display: none" id="server_name">{{ server.server_name }}</p>
+    <p style="display: none" id="stats_status">{{ server.server_status }}</p>
     <div class="container">
-        <h1>{{ server.server_name }} Details</h1>
+        <h1 class="header_text_class">{{ server.server_name }}</h1>
 
         <div class="card">
             <div class="card-header">
                 Server Stats
                 {% if server.server_status %}
                     {% set badge_class = {
-                        'Offline': 'badge-secondary',
-                        'Crashed': 'badge-danger',
-                        'Suspended': 'badge-info',
-                        'Stopping': 'badge-warning',
-                        'Waking': 'badge-info',
-                        'Starting': 'badge-warning',
-                        'Restarting': 'badge-warning',
-                        'Idle': 'badge-secondary',
-                        'Active': 'badge-success'
+                        'Offline': 'badge bg-secondary',
+                        'Crashed': 'badge bg-danger',
+                        'Suspended': 'badge bg-info',
+                        'Stopping': 'badge bg-warning',
+                        'Waking': 'badge bg-info',
+                        'Starting': 'badge bg-warning',
+                        'Restarting': 'badge bg-warning',
+                        'Idle': 'badge bg-secondary',
+                        'Active': 'badge bg-success',
+                        'Game Ended': 'badge bg-success',
+                        'Game Starting': 'badge bg-success'
                     }[server.server_status] %}
-                    <span class="badge {{ badge_class }}" style="float: right">{{ server.server_status }}</span>
+                    <span class="badge {{ badge_class }}" style="float: right" id="status_badge">{{ server.server_status }}</span>
                 {% else %}
                     <div class="alert alert-warning" role="alert">
                         Empty or None
@@ -106,9 +651,14 @@
             </div>
             <div class="card-body">
                 <div id="stats_body_info">
-                    <p>Server Restarts: {{ server.server_restarts }}</p>
-                    <p>Number of Gamemode Changes: {{ server.gamemode_changes }}</p>
-                    <p>Current Gamemode: {{ server.previous_gamemode }}</p>
+                    <p>Current Game: <span class="server_values" id="text_game">{{ server.current_game }} </span>, running gamemode: <span class="server_values" id="text_gamemode">{{ server.current_gamemode }}</span></p>
+                    <p>Current Checkpoint: <span class="server_values" id="text_checkpoint">{{ server.current_checkpoint }}</span></p>
+                    <p>Last Completed Objective: <span class="server_values" id="text_objective">{{ server.last_completed_objective }}</span></p>
+                    <p>Player Deaths This Round: <span class="server_values" id="text_deaths">{{ server.player_deaths }}</span></p>
+                    <p>Game Attempts: <span class="server_values" id="text_attempts">{{ server.game_attempts }}</span></p>
+                    <p>Previous Game: <span class="server_values" id="text_previous_game">{{ server.previous_game }}</span></p>
+                    <p>Server Restarts: <span class="server_values" id="text_restarts"> {{ server.server_restarts }}</span></p>
+                    <p>Number of Gamemode Changes: <span class="server_values" id="text_gamemode_changes"> {{ server.gamemode_changes }} </span></p>
                 </div>
                 <div id="stats_body_buttons"> 
                     <button type="button" class="btn btn-danger" id="killServerBtn">Kill Server</button>
@@ -124,32 +674,729 @@
                 Connected Users
             </div>
             <div class="card-body">
-                <p class="card-text mb-3">Number of connected users:</p>
+                <p class="card-text mb-3">Number of connected users: <span id="text_user_count">{{ server.current_users|length }}</span></p>
                 <div class="card">
-                    <div class="card-body">
-                        {% if server.current_users %}
-                            <ul class="list-group">
-                                {% for user in server.current_users %}
-                                    <li class="list-group-item">{{ user }}</li>
-                                {% endfor %}
-                            </ul>
-                        {% else %}
-                            <div class="alert alert-warning" role="alert">
-                                Empty or None
-                            </div>
-                        {% endif %}
+                    <div class="card-body" id="div_users">
+                        <ul class="list-group" id="player_list" {% if not server.current_users %} style="display: none;" {% endif %}>
+                            {% for user in server.current_users %}
+                                <li class="list-group-item">{{ user }}</li>
+                            {% endfor %}
+                        </ul>
+                        <div class="alert alert-warning" id="no_players" role="alert" {% if server.current_users %} style="display: none;" {% endif %}>
+                            Empty or None
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!--
         <div class="card">
             <div class="card-header">
-                Console View
+                Server Settings
             </div>
-            <div class="card-body console-log">
-                <pre>{{ server.console }}</pre>
+            <div class="card-body"></div>
+                <div class="accordion" id="server_setup_accordion">
+                    <div class="accordion-item" id="server_setup_management_accordion">
+                        <h2 class="accordion-header" id="server_setup_management_accordion_header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#server_setup_management_accordion_collapse">
+                                General Server Settings
+                            </button>
+                        </h2>
+                        <div id="server_setup_management_accordion_collapse" class="accordion-collapse collapse" data-bs-parent="#server_setup_accordion">
+                            <button id="server_setup_management_load_button" class="btn btn-primary my-3">Load Settings</button>
+                            <form id="server_setup_management_form" class="p-4 bg-light" method="post">
+                                <div class="row mb-1 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_management_serverName" class="col-form-label">Server Name</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_management_serverName" name="server_name">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_management_installDir" class="col-form-label">Server Installation Directory</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_management_installDir" name="install_dir">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-3">
+                                        <label for="server_setup_management_sharedDirectory" class="col-form-label">Shared Install Directory</label>
+                                    </div>
+                                    <div class="col-1">
+                                        <input type="checkbox" class="form-check-input" id="server_setup_management_sharedDirectory" name="shared_install_dir">
+                                    </div>
+                                    <div class="col">
+                                        <div class="alert alert-primary d-flex align-items-center" role="alert">
+                                            <img src="{{ url_for('static', filename='icon_info.svg') }}" class="bi flex-shrink-0 me-2" width="24" height="24">
+                                            <div>
+                                                Check this box if the specified install directory is the same directory being used for multiple servers.<br>
+                                                The server will share the same whitelist, admin list, ban list, owner list and MOTD messages with every server using the specified directory.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_management_startingGamemode" class="col-form-label">Starting Gamemode</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_management_startingGamemode" name="starting_gamemode">
+                                            <option value="Area12_PersistentLevel">Area 12 - Chapter 1</option>
+                                            <option value="M_Area12_Part2">Area 12 - Chapter 2</option>
+                                            <option value="M_Area12_Part3">Area 12 - Chapter 3</option>
+                                            <option value="M_Antarctica">Antarctica</option>
+                                            <option value="M_HuntSweden">Axion Raid (Hunt)</option>
+                                            <option value="M_WaveSurvival">Wave Survival</option>
+                                            <option value="M_Sewer_CanalPVP">Canals PvP</option>
+                                            <option value="/Game/SCPPandemic/Maps/Hunt/M_HuntSweden?Game=/Game/SCPPandemic/Blueprints/Gameplay/GM_PVPGameMode.GM_PVPGameMode_C">Axiom PvP</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_management_maxReloads" class="col-form-label">Max Reloads Before Restart</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_management_maxReloads" name="max_reloads" placeholder="7">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_management_restrictedGamemode" class="col-form-label">Only Play This Gamemode</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_management_restrictedGamemode" name="restricted_gamemode">
+                                            <option value="">No Restriction</option>
+                                            <!-- <option value="Area12_PersistentLevel">Area 12 Campaign</option> -->
+                                            <option value="M_Antarctica">Antarctica</option>
+                                            <option value="M_HuntSweden">Axion Raid (Hunt)</option>
+                                            <option value="M_WaveSurvival">Wave Survival</option>
+                                            <option value="M_Sewer_CanalPVP">Canals PvP</option>
+                                            <option value="/Game/SCPPandemic/Maps/Hunt/M_HuntSweden?Game=/Game/SCPPandemic/Blueprints/Gameplay/GM_PVPGameMode.GM_PVPGameMode_C">Axiom PvP</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_management_port" class="col-form-label">Server Port</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_management_port" name="port" placeholder="7777">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_management_queryPort" class="col-form-label">Steam Query Port</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_management_queryPort" name="queryport" placeholder="27015">
+                                    </div>
+                                </div>
+
+                                <div class="mb-1 form-floating">
+                                    <textarea class="form-control" placeholder="Additional Launch Args" id="server_setup_management_args" name="server_args" rows="4"></textarea>
+                                    <label for="server_setup_management_args" class="floatingTextArea">Additional Launch Arguments (One per line, leave blank unless you know what you're doing)</label>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-success">Save Changes</button>
+                                    </div>
+                                </div>
+                            </form>                                
+                        </div>
+                    </div>
+                    <div class="accordion-item" id="server_setup_players_accordion">
+                        <h2 class="accordion-header" id="server_setup_players_accordion_header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#server_setup_players_accordion_collapse">
+                                Admins, Owners and Whitelist
+                            </button>
+                        </h2>
+                        <div id="server_setup_players_accordion_collapse" class="accordion-collapse collapse" data-bs-parent="#server_setup_accordion">
+                            <button id="server_setup_players_load_button" class="btn btn-primary my-3">Load Settings</button>
+                            <form id="server_setup_players_form" class="p-3" method="post">
+                                <div class="mb-1 form-floating">
+                                    <textarea class="form-control" placeholder="Steam User ID" id="server_setup_players_admins" name="admins" rows="4"></textarea>
+                                    <label for="server_setup_players_admins" class="floatingTextArea">Admins, one per line</label>
+                                </div>
+                                <div class="mb-1 form-floating">
+                                    <textarea class="form-control" placeholder="Steam User ID" id="server_setup_players_owners" name="owners" rows="4"></textarea>
+                                    <label for="server_setup_players_owners" class="floatingTextArea">Owners, one per line</label>
+                                </div>
+                                <div class="mb-1 form-floating">
+                                    <textarea class="form-control" placeholder="Steam User ID" id="server_setup_players_whitelist" name="whitelist" rows="4"></textarea>
+                                    <label for="server_setup_players_whitelist" class="floatingTextArea">Whitelist, one per line</label>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-success">Save Changes</button>
+                                    </div>
+                                </div>
+                            </form>                            
+                        </div>
+                    </div>
+                    <div class="accordion-item" id="server_setup_game_server_accordion">
+                        <h2 class="accordion-header" id="server_setup_game_server_accordion_header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#server_setup_game_server_collapse">
+                                Server Settings
+                            </button>
+                        </h2>
+                        <div id="server_setup_game_server_collapse" class="accordion-collapse collapse" data-bs-parent="#server_setup_accordion">
+                            <button id="server_setup_game_server_load_button" class="btn btn-primary my-3">Load Settings</button>
+                            <form id="server_setup_game_server_form" class="p-4 bg-light">
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_ServerName" class="col-form-label">Server Display Name</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_ServerName" name="ServerName" placeholder="Default to the other server name">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_ZombieSpawnAmount" class="col-form-label">Zombie Spawn Amount</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_ZombieSpawnAmount" name="ZombieSpawnAmount" placeholder="1">
+                                    </div>
+                                </div>
+                            
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_RespawnTime" class="col-form-label">Respawn Time</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_RespawnTime" name="RespawnTime" placeholder="15">
+                                    </div>
+                                </div>
+                            
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_MaxZombieCount" class="col-form-label">Max Zombie Count</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_MaxZombieCount" name="MaxZombieCount" placeholder="100">
+                                    </div>
+                                </div>
+                            
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_RoundTimer" class="col-form-label">Round Timer</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_RoundTimer" name="RoundTimer" placeholder="0">
+                                    </div>
+                                </div>
+                            
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_ResetZombieSpawners" class="col-form-label">Reset Zombie Spawners</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_ResetZombieSpawners" name="ResetZombieSpawners">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_ZombieRespawnTime" class="col-form-label">Zombie Respawn Time</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_ZombieRespawnTime" name="ZombieRespawnTime" placeholder="600">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_DisableGodmode" class="col-form-label">Disable Godmode</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_DisableGodmode" name="DisableGodmode">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_ScoreToWin" class="col-form-label">Score To Win</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_ScoreToWin" name="ScoreToWin" placeholder="25">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_MaxPlayerCount" class="col-form-label">Max Player Count</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_MaxPlayerCount" name="MaxPlayerCount" placeholder="4">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bRestartServerEachGame" class="col-form-label">Restart Server Each Game</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bRestartServerEachGame" name="bRestartServerEachGame">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bUseSeamlessTravel" class="col-form-label">Use Seamless Travel</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bUseSeamlessTravel" name="bUseSeamlessTravel">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bAnyoneUseAdminCam" class="col-form-label">Anyone Use Admin Cam</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bAnyoneUseAdminCam" name="bAnyoneUseAdminCam">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4 input-group">
+                                        <span class="input-group-text">Server Password</span>
+                                        <div class="input-group-text">
+                                            <input class="form-check-input mt-0" id="server_setup_game_server_bUseServerPassword" name="bUseServerPassword" type="checkbox">
+                                        </div>
+                                        <input type="text" class="form-control" id="server_setup_game_server_ServerPassword" name="ServerPassword">
+                                    </div>
+                                </div>
+                                
+
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_MaxGameBans" class="col-form-label">Max Game Bans</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_MaxGameBans" name="MaxGameBans" placeholder="2">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_MaxVACBans" class="col-form-label">Max VAC Bans</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_MaxVACBans" name="MaxVACBans" placeholder="2">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_MinDaysSinceLastBan" class="col-form-label">Min Days Since Last Ban</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_MinDaysSinceLastBan" name="MinDaysSinceLastBan" placeholder="150">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bDenyVACBan" class="col-form-label">Deny VAC Ban</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bDenyVACBan" name="bDenyVACBan">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bDenyGameBan" class="col-form-label">Deny Game Ban</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bDenyGameBan" name="bDenyGameBan">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bDenyCommunityBan" class="col-form-label">Deny Community Ban</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bDenyCommunityBan" name="bDenyCommunityBan">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bUseWhitelist" class="col-form-label">Use Whitelist</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bUseWhitelist" name="bUseWhitelist">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bFriendsOnly" class="col-form-label">Friends Only</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bFriendsOnly" name="bFriendsOnly">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bUseLAN" class="col-form-label">Use LAN</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bUseLAN" name="bUseLAN">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_EmptyServerRestartTime" class="col-form-label">Empty Server Restart Time</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_EmptyServerRestartTime" name="EmptyServerRestartTime" placeholder="30">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_AFKTimer" class="col-form-label">AFK Timer</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_AFKTimer" name="AFKTimer" placeholder="300">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bShouldAdvertise" class="col-form-label">Should Advertise</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bShouldAdvertise" name="bShouldAdvertise">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bAdminsAlwaysJoin" class="col-form-label">Admins Always Join</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bAdminsAlwaysJoin" name="bAdminsAlwaysJoin">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bDevsAlwaysJoin" class="col-form-label">Devs Always Join</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bDevsAlwaysJoin" name="bDevsAlwaysJoin">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_bTeamDamageEnabled" class="col-form-label">Team Damage Enabled</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_game_server_bTeamDamageEnabled" name="bTeamDamageEnabled">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_game_server_TeamDamageReflection" class="col-form-label">Team Damage Reflection</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_game_server_TeamDamageReflection" name="TeamDamageReflection" placeholder="0">
+                                    </div>
+                                </div>       
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-success">Save Changes</button>
+                                    </div>
+                                </div>                       
+                            </form>
+                        </div>
+                    </div>
+                    <div class="accordion-item" id="server_setup_gameplay_accordion">
+                        <h2 class="accordion-header" id="server_setup_gameplay_accordion_header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#server_setup_gameplay_collapse">
+                                Gameplay Settings
+                            </button>
+                        </h2>
+                        <div id="server_setup_gameplay_collapse" class="accordion-collapse collapse" data-bs-parent="#server_setup_accordion">
+                            <button id="server_setup_gameplay_load_button" class="btn btn-primary my-3">Load Settings</button>
+                            <form id="server_setup_gameplay_form" class="p-4 bg-light" method="post">
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-auto">
+                                        <label for="server_setup_gameplay_bOverrideDefaults" class="col-form-label">Enable Overrides</label>
+                                    </div>
+                                    <div class="col-auto">
+                                        <input type="checkbox" class="form-check-input" id="server_setup_gameplay_bOverrideDefaults" name="bOverrideDefaults">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_RecoilMultiplier" class="col-form-label">Recoil Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_RecoilMultiplier" name="RecoilMultiplier" placeholder="">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_SpreadMultiplier" class="col-form-label">Spread Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_SpreadMultiplier" name="SpreadMultiplier" placeholder="1">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_bCanSprint" class="col-form-label">Can Sprint</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_gameplay_bCanSprint" name="bCanSprint">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_MovementSpeedMultiplier" class="col-form-label">Movement Speed Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_MovementSpeedMultiplier" name="MovementSpeedMultiplier" placeholder="1">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_CharacterDamageMultiplier" class="col-form-label">Character Damage Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_CharacterDamageMultiplier" name="CharacterDamageMultiplier" placeholder="1">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_CharacterHealthMultiplier" class="col-form-label">Character Health Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_CharacterHealthMultiplier" name="CharacterHealthMultiplier" placeholder="1">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_LandingSprintDelay" class="col-form-label">Landing Sprint Delay</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_LandingSprintDelay" name="LandingSprintDelay" placeholder="0.4">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_LandingJumpDelay" class="col-form-label">Landing Jump Delay</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_LandingJumpDelay" name="LandingJumpDelay" placeholder="0.75">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_bForceFreeAimMultiplier" class="col-form-label">Force Free Aim Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_gameplay_bForceFreeAimMultiplier" name="bForceFreeAimMultiplier">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_FreeAimMultiplier" class="col-form-label">Free Aim Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_FreeAimMultiplier" name="FreeAimMultiplier" placeholder="0.2">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_ADSFreeAimMultiplier" class="col-form-label">ADS Free Aim Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_ADSFreeAimMultiplier" name="ADSFreeAimMultiplier" placeholder="0">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_bForceCanReloadWhileAiming" class="col-form-label">Force Can Reload While Aiming</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_gameplay_bForceCanReloadWhileAiming" name="bForceCanReloadWhileAiming">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_bForceNoReloadWhileSprinting" class="col-form-label">Force No Reload While Sprinting</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_gameplay_bForceNoReloadWhileSprinting" name="bForceNoReloadWhileSprinting">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_ReloadSpeedMultiplier" class="col-form-label">Reload Speed Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_ReloadSpeedMultiplier" name="ReloadSpeedMultiplier" placeholder="1">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_ADSSpeedMultiplier" class="col-form-label">ADS Speed Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_ADSSpeedMultiplier" name="ADSSpeedMultiplier" placeholder="1">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_SmoothAimMultiplier" class="col-form-label">Smooth Aim Multiplier</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="server_setup_gameplay_SmoothAimMultiplier" name="SmoothAimMultiplier" placeholder="1">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_CanADSInNightVision" class="col-form-label">Can ADS In Night Vision</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_gameplay_CanADSInNightVision" name="CanADSInNightVision">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_bCanBracedAim" class="col-form-label">Can Braced Aim</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_gameplay_bCanBracedAim" name="bCanBracedAim">
+                                            <option value="True" selected>True</option>
+                                            <option value="False">False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <label for="server_setup_gameplay_bUseHeightOverBore" class="col-form-label">Use Height Over Bore</label>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <select class="form-select" id="server_setup_gameplay_bUseHeightOverBore" name="bUseHeightOverBore">
+                                            <option value="True">True</option>
+                                            <option value="False" selected>False</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="row mb-1 g-3 align-items-center">
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-success">Save Changes</button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -157,11 +1404,11 @@
             <div class="card-header">
                 Log View
             </div>
-            <div class="card-body log-entries">
-                <pre>{{ server.log }}</pre>
+            <div class="card-body">
+                <ul class="list-group" id="logs"></ul>
             </div>
         </div>
-        -->
+        
     </div>
 </body>
 </html>

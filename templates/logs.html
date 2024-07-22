@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Server Logs</title>
+    {% include 'head.html' %}
+
+    <script>
+        $(document).ready(function() {
+            initPaginationPages ();
+            initLogs ();
+            initEventListeners();
+            console.log (getPageSize());
+        });
+        function initPaginationPages () 
+        {
+            page_size = getPageSize ();
+            actionURL = "/logs/get_max_pages"
+            $.ajax ({
+                url: actionURL,
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify ({
+                    page_size: page_size
+                }),
+                success: function (response) {
+                    setPaginationPages (response);
+                },
+                error: function (xhr, status, error) {
+                    console.error (error);
+                }
+            });
+        }
+        function initLogs ()
+        {
+            page_size = getPageSize ();
+            actionURL = "/logs/get_logs"
+            $.ajax ({
+                url: actionURL,
+                type: 'POST',
+                data: JSON.stringify ({
+                   page: parseInt ($("#page").text()),
+                   page_size: page_size 
+                }),
+                contentType: 'application/json',
+                success: function (response) {
+                    setLogs (response);
+                },
+                error: function (xhr, status, error) {
+                    console.error (error);
+                }
+            });
+        }
+        function initEventListeners ()
+        {
+            $("#page_size_select").change (function (){
+                var value = $(this).val();
+                setPageSize (parseInt (value));
+                location.reload();
+            });
+
+            var page_size = getPageSize ();
+            $("#page_size_select").val (page_size);
+        }
+
+        function getPageSize ()
+        {
+            let name = "page_size=";
+            let decodedCookie = decodeURIComponent(document.cookie);
+            let ca = decodedCookie.split(';');
+
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') {
+                    c = c.substring(1);
+                }
+                    if (c.indexOf(name) == 0) {
+                        return parseInt (c.substring(name.length, c.length));
+                }
+            }
+            return 10;
+        }
+        function setPageSize (size)
+        {
+            var name = "page_size";
+            var timeToLive = 7;
+            var cookie = name + "=" + encodeURIComponent (size);
+            cookie += "; max-age=" + timeToLive;
+            
+            document.cookie = cookie;
+        }
+        function setLogs (response)
+        {
+            var logs = response;
+
+            $('#logs').empty();
+            for (var i = 0; i < logs.length; i++)
+            {
+                var element = logs[i];
+                var listItem = $('<li></li>').addClass('list-group-item');
+                listItem.text(element);
+                $('#logs').append(listItem);
+            }
+        }
+
+        function setPaginationPages (pages)
+        {
+            var page = parseInt ($("#page").text());
+            
+            if (pages < 5)
+            {
+                generatePages (1, pages, page, pages);
+            }
+            else
+            {
+                if (page < 4)
+                {
+                    generatePages (1, Math.max (page + 2, 5), page, pages);
+                }
+                else
+                {
+                    if (pages - page < 3)
+                    {
+                        generatePages (Math.min (page - 2, pages - 4), pages, page, pages);
+                    }
+                    else
+                    {
+                        generatePages (page - 2, page + 2, page, pages);
+                    }
+                }
+            }
+            
+        }
+
+        function addPaginationNewestPageElement (page)
+        {
+            // Generate "Newest" button
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/1').text("Newest");
+
+            if (page === 1)
+            {
+                liElement.addClass('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+        function addPaginationPreviousPageElement (page)
+        {
+            // Generate "Previous" button
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + (page - 1)).text("Previous");
+            
+            if (page === 1)
+            {
+                liElement.addClass('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+
+        function addPaginationNextPageElement (page, pages)
+        {
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + (page + 1)).text("Next");
+            
+            if (page === pages)
+            {
+                liElement.addClass('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+        function addPaginationOldestPageElement (page, pages)
+        {
+            // Generate "Oldest" button
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + pages).text("Oldest");
+
+            if (page === pages)
+            {
+                liElement.addClass('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+        
+        function generatePages (start, end, current, last)
+        {
+            addPaginationNewestPageElement (current);
+            addPaginationPreviousPageElement (current);
+
+            for (var i = start; i <= end; i++)
+            {
+                addPaginationPageElement (i, i === current);
+            }
+            addPaginationNextPageElement (current, end);
+            addPaginationOldestPageElement (current, last);
+        }
+        function addPaginationPageElement (page, current_page)
+        {
+            var liElement = $('<li>').addClass('page-item');
+            var aElement = $('<a>').addClass('page-link').attr('href', '/logs/' + page).text(page);
+
+            if (current_page)
+            {
+                liElement.addClass ('disabled');
+            }
+
+            liElement.append(aElement);
+            $('#page_selector').append(liElement);
+        }
+    </script>
+</head>
+<body>
+    {% include 'header.html' %}
+
+    <p style="display: none" id="page">{{ page }}</p>
+    <div class="container">
+        <h1 class="header_text_class">Logs</h1>
+
+        <ul class="list-group" id="logs">
+        </ul>
+        <nav class="d-flex justify-content-between align-items-center mt-3">
+            <ul class="pagination mb-0" id="page_selector"> </ul>
+            <div class="d-inline mb-0 ms-auto me-0">
+                <span class="d-inline float-start me-3 mt-2">Logs Per Page</span>
+                <select id="page_size_select" class="form-select" style="width: 96px;">
+                    <option selected value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+        </nav>
+    </div>
+</body>
+</html>
