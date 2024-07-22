@@ -76,10 +76,6 @@
                     jsonObject.bUseServerPassword = $("#server_setup_game_server_bUseServerPassword").is (":checked");
                     jsonObject.shared_install_dir = $("#server_setup_management_sharedDirectory").is (":checked");
 
-                    jsonObject['admins'] = jsonObject['admins'].split ('\r\n');
-                    jsonObject['owners'] = jsonObject['owners'].split ('\r\n');
-                    jsonObject['whitelist'] = jsonObject['whitelist'].split ('\r\n');
-
                     $.ajax ({
                         url: actionURL,
                         type: 'POST',
@@ -263,27 +259,6 @@
                                     <textarea class="form-control" placeholder="Additional Launch Args" id="server_setup_management_args" name="server_args" rows="4"></textarea>
                                     <label for="server_setup_management_args" class="floatingTextArea">Additional Launch Arguments (One per line, leave blank unless you know what you're doing)</label>
                                 </div>
-                            </div>
-                        </div>
-                        <div class="accordion-item" id="server_setup_players_accordion">
-                            <h2 class="accordion-header" id="server_setup_players_accordion_header">
-                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#server_setup_players_accordion_collapse">
-                                    Admins, Owners and Whitelist
-                                </button>
-                            </h2>
-                            <div id="server_setup_players_accordion_collapse" class="accordion-collapse collapse p-4" data-bs-parent="#server_setup_accordion">
-                                <div class="mb-1 form-floating">
-                                    <textarea class="form-control" placeholder="Steam User ID" id="server_setup_players_admins" name="admins" rows="4"></textarea>
-                                    <label for="server_setup_players_admins" class="floatingTextArea">Admins, one per line</label>
-                                </div>
-                                <div class="mb-1 form-floating">
-                                    <textarea class="form-control" placeholder="Steam User ID" id="server_setup_players_owners" name="owners" rows="4"></textarea>
-                                    <label for="server_setup_players_owners" class="floatingTextArea">Owners, one per line</label>
-                                </div>
-                                <div class="mb-1 form-floating">
-                                    <textarea class="form-control" placeholder="Steam User ID" id="server_setup_players_whitelist" name="whitelist" rows="4"></textarea>
-                                    <label for="server_setup_players_whitelist" class="floatingTextArea">Whitelist, one per line</label>
-                                </div>                         
                             </div>
                         </div>
                         <div class="accordion-item" id="server_setup_game_server_accordion">

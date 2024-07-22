@@ -1,2 +1,2 @@
 python MeshWebServer.py
-pause
+python MeshServer.py

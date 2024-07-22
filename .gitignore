@@ -1,6 +1,2 @@
-Logs/
-config.ini
-log.txt
-Server_*
 __pycache__/
 .vscode
