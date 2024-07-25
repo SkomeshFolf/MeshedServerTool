@@ -1,2 +1,2 @@
-python MeshWebServer.py
-python MeshServer.py
+start python MeshedWebServer.py
+start python MeshedServer.py

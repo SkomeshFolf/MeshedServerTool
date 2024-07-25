@@ -52,7 +52,8 @@ def load_users ():
         return {}
 
 users = load_users()
-print (users)
+
+
 
 class User(UserMixin):
     def __init__ (self, username):

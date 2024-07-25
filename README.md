@@ -2,7 +2,7 @@
     # Meshed Server Tool
 
     Author: Skomesh
-    Version 2.0.0 
+    Version 2.0.1 
 
     Meshed Server Tool is a locally hosted web interface and server manager SCP: 5k or SCP Pandemic Dedicated Servers.
 
@@ -102,6 +102,10 @@
 
 
     ## Changelog
+
+        - 2.0.1
+            Hotfix
+            Properly fixed the "Restricted Gamemode" and "Restart after X" to actual work.
 
         - 2.0.0
             Fully integrated web interface.

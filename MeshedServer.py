@@ -425,8 +425,13 @@ class Server:
                                 self.server_info.game_started ()
 
                             # Is the next game declared?
-                            next_game = log_is_next_game (line)
-                            if next_game:
+                            # next_game = log_is_next_game (line)
+
+                            # Is the next game loading?
+                            game_loading = log_is_game_loading (line)
+                            if game_loading:
+                                self.server_info.game_loading (game_loading)
+                                
                                 if self.manual_shutdown_flag:
                                     self.shutdown_server()
                                     server_active = False
@@ -448,11 +453,6 @@ class Server:
                                     self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
                                     server_active = False
                                     break
-
-                            # Is the next game loading?
-                            game_loading = log_is_game_loading (line)
-                            if game_loading:
-                                self.server_info.game_loading (game_loading)
 
                             # Is a new gamemode?
                             gamemode = log_is_new_gamemode (line)
