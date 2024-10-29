@@ -314,7 +314,7 @@ class Server:
         self.server_info.previous_gamemode = None
         self.server_info.joined_users = set()
         self.server_info.disconnected_users = set()
-        self.server_info.current_users = set()
+        self.server_info.current_users = {}
         self.server_info.total_user_joins = 0
         self.server_info.total_user_disconnects = 0
         self.server_info.gamemode_changes = 0
@@ -470,15 +470,18 @@ class Server:
                                 self.idle_server()
 
                             # Is the latest log a player joining? Log it in the server info.
-                            player_id = log_is_player_joined(line)
-                            if player_id:
-                                self.server_info.player_join(player_id)
+                            player_name, player_hex = log_is_player_joined(line)
+                            if player_hex:
+                                player_id = log_get_steam_id_from_hex (player_hex)
+                                if player_id not in self.server_info.current_users:
+                                    self.server_info.player_join(player_id, player_name)
 
                             # Is the latest log a player leaving? Log it in the server info.
                             player_id = log_is_player_leave(line)
                             if player_id:
-                                self.server_info.player_leave(player_id)
-                            
+                                if player_id in self.server_info.current_users:
+                                    self.server_info.player_leave(player_id)
+  
                             # Is this the first time the server has started? Init the server.
                             if not self.server_started:
                                 session_create = log_is_session_creation (line)
@@ -501,7 +504,7 @@ class ServerInfo:
         self.previous_game = None
         self.joined_users = set()
         self.disconnected_users = set()
-        self.current_users = set()
+        self.current_users = {}
         self.gamemode_changes = 0
         self.total_user_joins = 0
         self.total_user_disconnects = 0
@@ -510,17 +513,18 @@ class ServerInfo:
         self.game_attempts = 0
         self.server_status = 'Offline'
     
-    def player_join (self, player):
+    def player_join (self, player, player_name):
         self.total_user_joins += 1
         self.joined_users.add(player)
-        self.current_users.add(player)
-        register_player_join (self.name, player)
+        self.current_users[str(player)] = player_name
+        register_player_join (self.name, player, player_name)
     
     def player_leave (self, player):
         self.total_user_disconnects += 1
         self.disconnected_users.add(player)
-        self.current_users.discard(player)
-        register_player_leave (self.name, player)
+        player_name = self.current_users[player]
+        del self.current_users[player]
+        register_player_leave (self.name, player, player_name)
 
     def game_change (self, game):
         self.reset_game_variables()
@@ -579,7 +583,7 @@ class ServerInfo:
         self.last_completed_objective = None
         self.joined_users = set()
         self.disconnected_users = set()
-        self.current_users = set()
+        self.current_users = {}
         self.gamemode_changes = 0
         self.total_user_joins = 0
         self.total_user_disconnects = 0
@@ -756,12 +760,12 @@ wait_for_web_server_thread = None
 web_server_address = None
 web_server_port = None
 
-def register_player_join (server, player):
-    write_to_log (server, f"Player {player} connected.")
+def register_player_join (server, player, player_name):
+    write_to_log (server, f"Player {player_name} [{player}] connected.")
     send_server_info ()
 
-def register_player_leave (server, player):
-    write_to_log (server, f"Player {player} has disconnected.")
+def register_player_leave (server, player, player_name):
+    write_to_log (server, f"Player {player_name} [{player}] has disconnected.")
     send_server_info ()
 
 def register_server_restart (server, reason):
@@ -878,8 +882,12 @@ def log_is_entering_idle (line):
     return bool (match)
 
 def log_is_player_joined (line):
-    match = re.search(r'Sending auth result to user (\d+)', line)
-    return match.group(1) if match else None
+    # old_match = re.search(r'Sending auth result to user (\d+)', line)
+    match = re.search(r'\?Name=(.*?) userId:.*?\[?(0x[0-9A-Fa-f]+)\]', line)
+    if match:
+        return match.group(1), match.group (2)
+    else:
+        return None, None
 
 def log_is_player_leave (line):
     close_match = re.search(r'UNetConnection::Close: \[UNetConnection\] RemoteAddr: (\d+):', line)
@@ -908,7 +916,10 @@ def log_is_player_id(log_file_path):
             steam_ids.update(matches)
 
     # Log the collected Steam IDs
-    #for steam_id in steam_ids:
+    #for steam_id in steam_ids: 
+
+def log_get_steam_id_from_hex (hex):
+    return int(hex, 16)
 
 
 def execute_server_start (server):
@@ -942,7 +953,7 @@ def send_server_info ():
             "previous_game": info.previous_game,
             "joined_users": list(info.joined_users),
             "disconnected_users": list(info.disconnected_users),
-            "current_users": list(info.current_users),
+            "current_users": info.current_users,
             "gamemode_changes": info.gamemode_changes,
             "total_user_joins": info.total_user_joins,
             "total_user_disconnects": info.total_user_disconnects,
@@ -1126,7 +1137,7 @@ def update_server_path_name (server):
     
     server_new_name = server_instance.name
     
-    if server is not server_new_name:
+    if server != server_new_name:
         server_instance.server_info.name = server_new_name
         
         old_path = os.path.join (data_dir, f"Server_{server}")

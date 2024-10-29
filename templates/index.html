@@ -9,26 +9,28 @@
             {
                 var server_info = JSON.parse (event.data);
                 Object.values(server_info).forEach(function(server) {
-                // Update current users count
-                $('#' + server.server_name + '-current-users').text(server.current_users.length);
-                
-                // Update status badge
-                var badge_class = {
-                    'Creating': 'bg-info',
-                    'Offline': 'bg-secondary',
-                    'Crashed': 'bg-danger',
-                    'Suspended': 'bg-info',
-                    'Stopping': 'bg-warning',
-                    'Waking': 'bg-info',
-                    'Starting': 'bg-warning',
-                    'Restarting': 'bg-warning',
-                    'Idle': 'bg-secondary',
-                    'Active': 'bg-success',
-                    'Game Ended': 'bg-success',
-                    'Game Starting': 'bg-success'
-                }[server.server_status];
+                    // Update current users count
+                    $('#' + server.server_name_encoded + '-current-users').text(Object.keys(server.current_users).length);
 
-                $('#' + server.server_name + '-status-badge').removeClass().addClass('badge ' + badge_class).text('Status: ' + server.server_status);
+                    $('#' + server.server_name_encoded + '-name-text').text (server.server_name);
+                    
+                    // Update status badge
+                    var badge_class = {
+                        'Creating': 'bg-info',
+                        'Offline': 'bg-secondary',
+                        'Crashed': 'bg-danger',
+                        'Suspended': 'bg-info',
+                        'Stopping': 'bg-warning',
+                        'Waking': 'bg-info',
+                        'Starting': 'bg-warning',
+                        'Restarting': 'bg-warning',
+                        'Idle': 'bg-secondary',
+                        'Active': 'bg-success',
+                        'Game Ended': 'bg-success',
+                        'Game Starting': 'bg-success'
+                    }[server.server_status];
+
+                    $('#' + server.server_name_encoded + '-status-badge').removeClass().addClass('badge ' + badge_class).text('Status: ' + server.server_status);
                 });
             }
             function update_logs (event)
@@ -45,7 +47,7 @@
                 }
             }
 
-            var eventSource = new EventSource ('/stream_server_info');
+            var eventSource = new EventSource ('/stream_server_info_encoded');
             eventSource.addEventListener('message', update_server_info);
             var logEventSource = new EventSource ('/stream_all_server_logs');
             logEventSource.addEventListener('message', update_logs);
@@ -57,14 +59,14 @@
     <div class="container" id="server-info-container">
         <ul class="list-group">
             {% for server_name, server_info in servers.items() %}
-                <pre id="{{ server_name }}-pre">{{ server }}</pre>
-                <li class="list-group-item d-flex justify-content-between align-items-center" id="{{ server_name }}-li">
+                <pre id="{{ server_info.server_name_encoded }}-pre">{{ server }}</pre>
+                <li class="list-group-item d-flex justify-content-between align-items-center" id="{{ server_info.server_name_encoded }}-li">
                     <div>
                         <a href="{{ url_for('web_server_server_page', server_name=server_info.server_name) }}">
-                            <strong>{{ server_info.server_name }}</strong>
+                            <strong id="{{ server_info.server_name_encoded }}-name-text">{{ server_info.server_name }}</strong>
                         </a>
                         <br>
-                        Connected Players: <span id="{{ server_name }}-current-users">{{ server_info.current_users|length }}</span>
+                        Connected Players: <span id="{{ server_info.server_name_encoded }}-current-users">{{ server_info.current_users|length }}</span>
                     </div>
                     <div>
                         {% set badge_class = {
@@ -80,7 +82,7 @@
                             'Game Ended': 'bg-success',
                             'Game Starting': 'bg-success'
                         }[server_info.server_status] %}
-                        <span class="badge {{ badge_class }}" id="{{ server_name }}-status-badge">Status: {{ server_info.server_status }}</span>
+                        <span class="badge {{ badge_class }}" id="{{ server_info.server_name_encoded }}-status-badge">Status: {{ server_info.server_status }}</span>
                         
                         <a href="{{ url_for('web_server_server_page', server_name=server_info.server_name) }}"
                         class="btn btn-primary btn-sm">View Details</a>

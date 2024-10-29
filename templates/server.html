@@ -172,7 +172,8 @@
             }
             function updateUserCounts (server_info)
             {
-                var user_count = server_info.current_users.length
+                var user_count = Object.keys(server_info.current_users).length;
+
                 $("#text_user_count").text (user_count);
 
                 if (user_count == 0)
@@ -184,12 +185,17 @@
                 else
                 {
                     $('#player_list').empty();
-                    for (var i = 0; i < user_count; i++)
+                    for (var userId in server_info.current_users)
                     {
-                        var element = server_info.current_users[i];
-                        var listItem = $('<li></li>').addClass('list-group-item');
-                        listItem.text(element);
-                        $('#player_list').append(listItem);
+                        if (server_info.current_users.hasOwnProperty(userId))
+                        {
+                            var username = server_info.current_users[userId];
+
+                            var element = username;
+                            var listItem = $('<li></li>').addClass('list-group-item');
+                            listItem.text(element);
+                            $('#player_list').append(listItem);
+                        }
                     }
                     $("#player_list").show();
                     $("#no_players").hide();

@@ -1,6 +1,7 @@
 from flask import Flask, request, Response, render_template, jsonify, g, redirect, url_for
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_cors import CORS
+from urllib.parse import quote
 import json
 from json.decoder import JSONDecodeError
 import os
@@ -71,6 +72,29 @@ def get_servers():
         if 'servers' not in g:
             g.servers = app.config['servers']
         return g.servers
+    
+def get_encoded_servers():
+    servers = get_servers()
+
+    encoded_servers = {
+        server_name: {
+            'server_name_encoded': server.name.replace(' ', '_'), 
+            'server_name': server.name,
+            'current_users': server.current_users,
+            'server_status': server.server_status,
+            'gamemode_changes': server.gamemode_changes,
+            'server_restarts': server.server_restarts,
+            'current_game': server.current_game,
+            'current_gamemode': server.current_gamemode,
+            'previous_game': server.previous_game,
+            'current_checkpoint': server.current_checkpoint,
+            'last_completed_objective': server.last_completed_objective,
+            'player_deaths': server.player_deaths,
+            'game_attempts': server.game_attempts
+        }
+        for server_name, server in servers.items()
+    }
+    return encoded_servers
 
 def get_logs(line_count=10, start_range=0, server=None):
     global app_name, app_author
@@ -223,6 +247,19 @@ def stream_server_info():
 
     return Response(generate(), mimetype='text/event-stream')
 
+@app.route('/stream_server_info_encoded')
+@login_required
+def stream_server_info_encoded():
+    def generate():
+        with app.app_context():
+            while True:
+                server_info = get_encoded_servers()
+                yield f"data: {json.dumps(server_info)}\n\n"
+
+                time.sleep(1)
+
+    return Response(generate(), mimetype='text/event-stream')
+
 @app.route('/stream_all_server_logs')
 @login_required
 def stream_all_server_logs():
@@ -276,7 +313,7 @@ def stream_new_reports ():
 @app.route('/')
 @login_required
 def web_server_home ():
-    return render_template('index.html', servers=get_servers(), logs=get_logs())
+    return render_template('index.html', servers=get_encoded_servers(), logs=get_logs())
 
 @app.route('/login', methods=['POST', 'GET'])
 def web_server_login ():
