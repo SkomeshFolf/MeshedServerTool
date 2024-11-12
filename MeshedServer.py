@@ -451,15 +451,25 @@ class Server:
                                     self.restart_server(f"Server reloaded {self.server_info.gamemode_changes} times")
                                     server_active = False
                                     break
-                                elif self.restricted_gamemode != '' and self.server_info.current_game != self.restricted_gamemode:
-                                    self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
-                                    server_active = False
-                                    break
+                                elif self.restricted_gamemode != '':
+                                    delimited_string = self.restricted_gamemode.split('?')
+                                    if len (delimited_string) == 1:
+                                        if self.server_info.current_game != delimited_string[0]:
+                                            self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
+                                            server_active = False
+                                            break
 
                             # Is a new gamemode?
                             gamemode = log_is_new_gamemode (line)
                             if gamemode:
                                 self.server_info.new_gamemode (gamemode)
+
+                                delimited_string = self.restricted_gamemode.split('?')
+                                if len (delimited_string) > 1:
+                                    if self.server_info.current_game != delimited_string[0] or self.server_info.current_gamemode != delimited_string[1]:
+                                        self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
+                                        server_active = False
+                                        break
 
                             # Has session been created?
                             session_create = log_is_session_creation (line)
