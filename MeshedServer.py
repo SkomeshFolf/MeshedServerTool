@@ -45,7 +45,6 @@ class Server:
         self.server_started = False
 
         self.current_line = 0
-        self.idle_time = -1
         self.log_check_interval = int (read_global_config()['General']['log_checking_interval'])
         self.last_crash = None
         self.manual_kill_flag = False
@@ -68,7 +67,6 @@ class Server:
             self.wait_for_valid_install_dir()
 
         UserReport.register_reports_directory (os.path.join (self.saved_file_path, 'Reports'))
-        self.start_server()
     
     def read_server_config (self):
         self.config = read_config (self.config_path)
@@ -238,9 +236,7 @@ class Server:
         self.init_server()
 
     def active_server (self):
-        self.idle_time = -1
         if self.server_info.server_status != 5:
-            self.idle_time = -1
             self.server_info.server_status_change (5)
             register_server_active (self.name)
 
@@ -299,7 +295,6 @@ class Server:
         self.start_server()
         
     def idle_server (self):
-        self.idle_time = time.time()
         self.server_info.server_status_change (4)
         register_server_idle (self.name)
 
@@ -311,13 +306,7 @@ class Server:
 
     def reset_vars(self):
         self.log = None
-        self.server_info.previous_gamemode = None
-        self.server_info.joined_users = set()
-        self.server_info.disconnected_users = set()
-        self.server_info.current_users = {}
-        self.server_info.total_user_joins = 0
-        self.server_info.total_user_disconnects = 0
-        self.server_info.gamemode_changes = 0
+        self.server_info.reset_variables()
         self.current_line = 0
         self.server_started = False
         self.last_crash = None
@@ -351,6 +340,15 @@ class Server:
             return True
         else:
             return False
+        
+    def is_idle_for_too_long (self):
+        if self.server_info.idle_time != 0:
+            if self.server_info.idle_time + timedelta(minutes=2) < datetime.now():
+                self.restart_server ("Server idle for 2 minutes.")
+                return True
+            
+        return False
+
 
     def analyze_log(self):
         # If this starts when we are beyond the active hours, if it is, suspend.
@@ -390,6 +388,10 @@ class Server:
                             break
                     else:
                         self.server_crashed()
+
+                    # Check if idle for more than 2 minutes, restart the server.
+                    if self.is_idle_for_too_long ():
+                        break
 
                     # Go through each new line 
                     with open(self.log_file_path, 'r') as log_file:
@@ -497,26 +499,15 @@ class Server:
 class ServerInfo:
     def __init__ (self, name):
         self.name = name
-        self.current_game = None
-        self.current_gamemode = None
-        self.current_checkpoint = None
-        self.last_completed_objective = None
-        self.previous_game = None
-        self.joined_users = set()
-        self.disconnected_users = set()
-        self.current_users = {}
-        self.gamemode_changes = 0
-        self.total_user_joins = 0
-        self.total_user_disconnects = 0
         self.server_restarts = 0
-        self.player_deaths = 0
-        self.game_attempts = 0
         self.server_status = 'Offline'
+        self.reset_variables()
     
     def player_join (self, player, player_name):
         self.total_user_joins += 1
         self.joined_users.add(player)
         self.current_users[str(player)] = player_name
+        self.idle_time = 0
         register_player_join (self.name, player, player_name)
     
     def player_leave (self, player):
@@ -524,7 +515,17 @@ class ServerInfo:
         self.disconnected_users.add(player)
         player_name = self.current_users[player]
         del self.current_users[player]
+
         register_player_leave (self.name, player, player_name)
+        self.check_if_server_empty()
+
+    def check_if_server_empty (self):
+        if len (self.current_users) == 0:
+            self.server_empty()
+
+    def server_empty (self):
+        self.idle_time = datetime.now()
+        register_server_empty (self.name)
 
     def game_change (self, game):
         self.reset_game_variables()
@@ -579,16 +580,15 @@ class ServerInfo:
         self.current_game = None
         self.current_gamemode = None
         self.previous_game = None
-        self.current_checkpoint = None
-        self.last_completed_objective = None
         self.joined_users = set()
         self.disconnected_users = set()
         self.current_users = {}
         self.gamemode_changes = 0
         self.total_user_joins = 0
         self.total_user_disconnects = 0
-        self.player_deaths = 0
         self.game_attempts = 0
+        self.idle_time = 0
+        self.reset_game_variables()
 
     def server_status_change (self, new_status):
         status_dict = {
@@ -834,6 +834,9 @@ def register_gamemode_loading (server, gamemode):
 def register_session_created (server):
     write_to_log (server, "Session created. Now idling.")
 
+def register_server_empty (server):
+    write_to_log (server, "Server empty.")
+
 def log_is_objective_completed (line):
     match = re.search(r'LogObjectives: Completed Objective (.*?) successfully', line)
     return match.group(1) if match else None
@@ -847,11 +850,11 @@ def log_has_player_died (line):
     return bool (match)
 
 def log_has_game_ended (line):
-    match = re.search (r'LogBlueprintUserMessages: Game has ended', line)
+    match = re.search (r'LogBlueprintUserMessages: Changing Game status to GS_PostGame', line)
     return bool (match)
 
 def log_is_game_started (line):
-    match = re.search (r'LogBlueprintUserMessages: Game has started', line)
+    match = re.search (r'LogBlueprintUserMessages: Gamemode started', line)
     return bool (match)
 
 def log_is_next_game (line):
@@ -1013,17 +1016,17 @@ def send_new_reports (reports):
         response = requests.post(url, json=json_data)
     except requests.exceptions.ConnectionError as e:
         if check_web_server():
-            write_to_log_error (f"Unknown Web Server Error. {e}", method="send_server_info()")
+            write_to_log_error (f"Unknown Web Server Error. {e}", method="send_new_reports()")
             return
         else:
-            write_to_log_error (f"Web server either crashed or lost connection. Attempting to reconnect.", method="send_server_info()")
+            write_to_log_error (f"Web server either crashed or lost connection. Attempting to reconnect.", method="send_new_reports()")
             return
     except requests.exceptions.Timeout as e:
         if check_web_server():
-            write_to_log_error (f"Unknown Web Server Error. {e}", method="send_server_info()")
+            write_to_log_error (f"Unknown Web Server Error. {e}", method="send_new_reports()")
             return
         else:
-            write_to_log_error (f"Web server either crashed or lost connection. Attempting to reconnect.", method="send_server_info()")
+            write_to_log_error (f"Web server either crashed or lost connection. Attempting to reconnect.", method="send_new_reports()")
             return
 
 def begin_server (name):
@@ -1495,6 +1498,8 @@ def main():
             init_sockets()
         else:
             start_wait_for_web_server_thread()
+    
+    send_server_info()
 
     while True:
         time.sleep(3)

@@ -762,7 +762,9 @@ def main ():
     logging.basicConfig(level=logging.ERROR)
     logger = logging.getLogger('waitress')
     logger.setLevel (logging.ERROR)
-    waitress.serve (app, listen='0.0.0.0:5000', threads=8)
+    config = MeshedServer.get_global_config ()
+    web_server_port = config['WebServer']['web_server_port']
+    waitress.serve (app, listen=f"0.0.0.0:{web_server_port}", threads=8)
 
 if __name__ == '__main__':
     main()
