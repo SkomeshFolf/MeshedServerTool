@@ -9,19 +9,15 @@
             initPaginationPages ();
             initLogs ();
             initEventListeners();
-            console.log (getPageSize());
         });
         function initPaginationPages () 
         {
             page_size = getPageSize ();
-            actionURL = "/logs/get_max_pages"
+            actionURL = "/logs/page-size?page_size=" + page_size;
             $.ajax ({
                 url: actionURL,
-                type: 'POST',
+                type: 'GET',
                 contentType: 'application/json',
-                data: JSON.stringify ({
-                    page_size: page_size
-                }),
                 success: function (response) {
                     setPaginationPages (response);
                 },
@@ -33,14 +29,10 @@
         function initLogs ()
         {
             page_size = getPageSize ();
-            actionURL = "/logs/get_logs"
+            actionURL = "/logs?page_size=" + page_size + "&page=" + $("#page").text();
             $.ajax ({
                 url: actionURL,
-                type: 'POST',
-                data: JSON.stringify ({
-                   page: parseInt ($("#page").text()),
-                   page_size: page_size 
-                }),
+                type: 'GET',
                 contentType: 'application/json',
                 success: function (response) {
                     setLogs (response);

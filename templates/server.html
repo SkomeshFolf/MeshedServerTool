@@ -17,8 +17,8 @@
             function sendServerControlRequest(action) 
             {
                 $.ajax({
-                    type: 'POST',
-                    url: '/control_server',
+                    type: 'PUT',
+                    url: '/control-server',
                     data: { action: action, server: $("#server_name").text() },
                     success: function(response) {
                         createAlertToast ("Success", "Sending " + action + " action to server.");
@@ -127,7 +127,7 @@
             }
             function initEventListening ()
             {
-                var eventSource = new EventSource ('/stream_server_info');
+                var eventSource = new EventSource ('/stream-server-info');
                 eventSource.addEventListener('message', update_server_info);
             }
             function manageButtonVisibility (server_info)
@@ -190,8 +190,14 @@
                         if (server_info.current_users.hasOwnProperty(userId))
                         {
                             var username = server_info.current_users[userId];
+                            var reports = "";
 
-                            var element = username;
+                            if (userId in server_info.user_reports) {
+                                reportCount = server_info.user_reports[userId];
+                                reports = `This user has ${reportCount} ${reportCount > 1 ? 'total' : ''} report${reportCount > 1 ? 's' : ''}`;
+                            }
+
+                            var element = `${username} [${userId}]. (${reports})`;
                             var listItem = $('<li></li>').addClass('list-group-item');
                             listItem.text(element);
                             $('#player_list').append(listItem);
@@ -231,8 +237,8 @@
             function initSettingsManagement ()
             {
                 $.ajax ({
-                    type: 'POST',
-                    url: '/server/' + $("#server_name").text() + '/request_management_settings',
+                    type: 'GET',
+                    url: '/server/' + $("#server_name").text() + '/management-settings',
                     dataType: 'json',
                     success: function (response) {
                         loadSettingsManagement (response);
@@ -263,8 +269,8 @@
             function initSettingsPlayers ()
             {
                 $.ajax ({
-                    type: 'POST',
-                    url: '/server/' + $("#server_name").text() + '/request_players_settings',
+                    type: 'GET',
+                    url: '/server/' + $("#server_name").text() + '/players-settings',
                     dataType: 'json',
                     success: function (response) {
                         loadSettingsPlayers (response);
@@ -290,8 +296,8 @@
             function initSettingsGameServer ()
             {
                 $.ajax ({
-                    type: 'POST',
-                    url: '/server/' + $("#server_name").text() + '/request_server_settings',
+                    type: 'GET',
+                    url: '/server/' + $("#server_name").text() + '/server-settings',
                     dataType: 'json',
                     success: function (response) {
                         loadSettingsServer (response);
@@ -343,8 +349,8 @@
             function initSettingsGameplay ()
             {
                 $.ajax ({
-                    type: 'POST',
-                    url: '/server/' + $("#server_name").text() + '/request_gameplay_settings',
+                    type: 'GET',
+                    url: '/server/' + $("#server_name").text() + '/gameplay-settings',
                     dataType: 'json',
                     success: function (response) {
                         loadSettingsGameplay (response);
@@ -389,7 +395,7 @@
                     event.preventDefault();
 
                     var serverName = $("#server_name").text();
-                    var actionURL = '/server/' + serverName + '/submit_management_settings';
+                    var actionURL = '/server/' + serverName + '/management-settings';
 
                     $(this).attr('action', actionURL);
 
@@ -406,7 +412,7 @@
 
                     $.ajax ({
                         url: actionURL,
-                        type: 'POST',
+                        type: 'PUT',
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
@@ -426,7 +432,7 @@
                     event.preventDefault();
 
                     var serverName = $("#server_name").text();
-                    var actionURL = '/server/' + serverName + '/submit_players_settings';
+                    var actionURL = '/server/' + serverName + '/players-settings';
 
                     $(this).attr('action', actionURL);
 
@@ -449,7 +455,7 @@
 
                     $.ajax ({
                         url: actionURL,
-                        type: 'POST',
+                        type: 'PUT',
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
@@ -477,7 +483,7 @@
                     event.preventDefault();
 
                     var serverName = $("#server_name").text();
-                    var actionURL = '/server/' + serverName + '/submit_server_settings';
+                    var actionURL = '/server/' + serverName + '/server-settings';
 
                     $(this).attr('action', actionURL);
 
@@ -494,7 +500,7 @@
 
                     $.ajax ({
                         url: actionURL,
-                        type: 'POST',
+                        type: 'PUT',
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
@@ -514,7 +520,7 @@
                     event.preventDefault();
 
                     var serverName = $("#server_name").text();
-                    var actionURL = '/server/' + serverName + '/submit_gameplay_settings';
+                    var actionURL = '/server/' + serverName + '/gameplay-settings';
 
                     $(this).attr('action', actionURL);
 
@@ -532,7 +538,7 @@
 
                     $.ajax ({
                         url: actionURL,
-                        type: 'POST',
+                        type: 'PUT',
                         contentType: 'application/json',
                         data: JSON.stringify(jsonObject),
                         success: function (response) {
@@ -602,7 +608,7 @@
             }
             function initLogStreams()
             {
-                var logEventSource = new EventSource ('/server/' + $("#server_name").text() + '/stream_server_logs');
+                var logEventSource = new EventSource ('/server/' + $("#server_name").text() + '/stream-server-logs');
                 logEventSource.addEventListener('message', update_logs);
             }
             function update_logs (event)

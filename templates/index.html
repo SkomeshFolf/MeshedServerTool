@@ -47,9 +47,9 @@
                 }
             }
 
-            var eventSource = new EventSource ('/stream_server_info_encoded');
+            var eventSource = new EventSource ('/stream-server-info-encoded');
             eventSource.addEventListener('message', update_server_info);
-            var logEventSource = new EventSource ('/stream_all_server_logs');
+            var logEventSource = new EventSource ('/stream-all-server-logs');
             logEventSource.addEventListener('message', update_logs);
         });
     </script>

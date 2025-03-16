@@ -18,7 +18,7 @@
         }
         function initReportStream()
         {
-            var logEventSource = new EventSource ('/stream_new_reports_quantity');
+            var logEventSource = new EventSource ('/stream-new-reports-quantity');
             logEventSource.addEventListener('message', update_reports);
         }
         function update_reports (event)

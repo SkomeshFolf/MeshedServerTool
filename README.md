@@ -2,7 +2,7 @@
     # Meshed Server Tool
 
     Author: Skomesh
-    Version 2.0.4
+    Version 2.1.0
 
     Meshed Server Tool is a locally hosted web interface and server manager SCP: 5k or SCP Pandemic Dedicated Servers.
 
@@ -79,18 +79,17 @@
 
         # Server Manager Settings
         Meshed Server Tool saves all of its settings in appdata or .local directories. You can find them at:
-        C:\Users\User\AppData\Local\Skomesh\Meshed Server Tool
+        C:\Users\User\AppData\Local\user\Meshed Server Tool
         or
         /home/user/.local/share/Meshed Server Tool
         /home/user/.config/Meshed Server Tool
         
 
     ## TODO
-        Fix server name changing
+        Change streams from loops to wait for changes
         Viewable global ban list
         Settings for logging speed
         Integrated server updater
-        More reliable reports menu
         Show read reports, not just new ones
         Bug fixing, exception handling
         MOTD messages, global and server specific
@@ -103,6 +102,10 @@
 
 
     ## Changelog
+
+        - 2.1.0
+            This update should add responsiveness by removing unnecessary IPC by consolidating the server manager and web server into one process and file.
+            Moved many similar functions to their own files
 
         - 2.0.4
             Fixed "Only play this gamemode" being set to Axiom PvP not working
