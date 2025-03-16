@@ -764,15 +764,6 @@ def get_lock():
 
 #endregion
 
-#region Send server control - To be deprecated
-def send_server_control ():    
-    return DeprecationWarning
-#endregion
-
-def generate_reported_user_dictionary ():
-    return NotImplementedError
-
-
 #region Server Classes
 
 class Server:
@@ -1424,56 +1415,6 @@ def server_command_execute_server_kill (server):
 
 #endregion
 
-
-#region Deprecated functions
-
-def send_server_info ():    
-    server_info_dicts = [
-        {
-            "server_name": info.name,
-            "current_game": info.current_game,
-            "current_gamemode": info.current_gamemode,
-            "current_checkpoint": info.current_checkpoint,
-            "last_completed_objective": info.last_completed_objective,
-            "previous_game": info.previous_game,
-            "joined_users": list(info.joined_users),
-            "disconnected_users": list(info.disconnected_users),
-            "current_users": info.current_users,
-            "gamemode_changes": info.gamemode_changes,
-            "total_user_joins": info.total_user_joins,
-            "total_user_disconnects": info.total_user_disconnects,
-            "server_restarts": info.server_restarts,
-            "player_deaths": info.player_deaths,
-            "game_attempts": info.game_attempts,
-            "server_status": info.server_status
-        }
-        for info in server_info
-    ]
-    config = read_global_config()
-    json_data = json.dumps (server_info_dicts)
-    return DeprecationWarning
-
-def send_new_reports (reports):    
-    report_dict = [
-        {
-            'target': report.target,
-            'target_id': report.target_id,
-            'source': report.source,
-            'source_id': report.source_id,
-            'date': report.date,
-            'reason': report.reason,
-            'text': report.text,
-            'hash': report.hash
-        }
-        for report in reports
-    ]
-   
-    json_data = json.dumps (report_dict)
-
-    return DeprecationWarning
-
-#endregion
-
 #region Server creation
 
 def begin_server (name):
@@ -1673,7 +1614,7 @@ def get_global_config ():
     return config
 
 def read_global_config ():
-    global web_server_address, web_server_port
+    global web_server_port
 
     config = get_global_config ()
 
