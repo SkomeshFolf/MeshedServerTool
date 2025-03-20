@@ -2,7 +2,7 @@
     # Meshed Server Tool
 
     Author: Skomesh
-    Version 2.1.0
+    Version 2.1.1
 
     Meshed Server Tool is a locally hosted web interface and server manager SCP: 5k or SCP Pandemic Dedicated Servers.
 
@@ -103,8 +103,15 @@
 
     ## Changelog
 
+        - 2.1.1
+            Added extra calls to ensure banlists get updated on server and manager start
+            Fixed server restarting due to "crashing" when Stop Server After Game is executed
+            Other general fixes
+            Added global config value for debug logging level. In future updates there will be more logging and error log viewer, but for now this is all
+            Fixed the toast message for start/stop messages to the server to now appear when the button clicks instead of on success
+
         - 2.1.0
-            This update should add responsiveness by removing unnecessary IPC by consolidating the server manager and web server into one process and file.
+            This update should add responsiveness by removing unnecessary IPC by consolidating the server manager and web server into one process and file
             Moved many similar functions to their own files
 
         - 2.0.4

@@ -4,6 +4,7 @@ import os
 from enum import Enum
 import shutil
 import platformdirs
+import configparser
 
 class LogLevel (Enum):
     DEBUG = 10
@@ -91,6 +92,9 @@ def write_to_log (server, content):
         log.write(f"\n[{formatted_datetime}] {server} - {content}")
 
 def write_to_log_error (content, severity_int: LogLevel=30, server="", method=""):
+    if severity_int < get_config_reporting_level():
+        return
+    
     log_dir = get_log_dir()
 
     severity = LogLevel (severity_int)
@@ -151,3 +155,21 @@ def get_log_dir():
     log_dir = platformdirs.user_log_dir (app_name, app_author, ensure_exists=True)
 
     return log_dir
+
+def get_config_reporting_level():
+    app_name = "Meshed Server Tool"
+    app_author = "Skomesh"
+
+    config_dir = platformdirs.user_config_dir (app_name, app_author, ensure_exists=True)
+
+    config_file = os.path.join (config_dir, "config.ini")
+
+    if os.path.exists (config_file):
+        try:
+            config = configparser.ConfigParser()
+            config.read (config_file)
+            return int (config['General']['debug_logging_level'])
+        except Exception as e:
+            return 30
+    else:
+        return 30

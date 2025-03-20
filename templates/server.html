@@ -16,13 +16,13 @@
 
             function sendServerControlRequest(action) 
             {
+                createAlertToast ($("#server_name").text(), "Sending " + action + " action to server.");
                 $.ajax({
                     type: 'PUT',
                     url: '/control-server',
                     data: { action: action, server: $("#server_name").text() },
                     success: function(response) {
-                        createAlertToast ("Success", "Sending " + action + " action to server.");
-                        // Handle the response as needed
+                        createAlertToast ("Success", action + " action success.");
                     },
                     error: function(error) {
                         createAlertToast ("Error", "Failed sending " + action + " action to server. " + error);

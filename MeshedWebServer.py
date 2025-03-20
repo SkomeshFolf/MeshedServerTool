@@ -878,8 +878,13 @@ class Server:
             self.valid_dir_flag = False
 
     def start_log_analysis (self):
-        thread = threading.Thread (target=self.analyze_log, daemon=True)
-        thread.start()
+        time.sleep (2)
+        MeshedLogging.write_to_log_error ("Starting log analysis", 10, self.name, "start_log_analysis()")
+        if self.analysis_thread != None:
+            MeshedLogging.write_to_log_error ("Trying to start log analysis whilst a thread already exists.", 30, self.name, "start_log_analysis()")
+
+        self.analysis_thread = threading.Thread (target=self.analyze_log, daemon=True)
+        self.analysis_thread.start()
 
     def start_server (self):
         if not self.valid_dir_flag:
@@ -906,7 +911,10 @@ class Server:
             return False
             
     def launch_server (self):
-        if not self.server_process:                        
+        if not self.server_process:  
+            MeshedLogging.write_to_log_error ("Launching server", 10, self.name, "launch_server()")
+            update_server_banlists()
+
             if self.shared_dir:
                 server_config = os.path.join (self.saved_file_path, "Config", f"{self.name}.ini")
                 if not os.path.exists (server_config):
@@ -937,6 +945,8 @@ class Server:
             self.server_process = subprocess.Popen(command)
             self.server_info.server_restarts = self.server_info.server_restarts + 1
             self.start_log_analysis()
+        else:
+            MeshedLogging.write_to_log_error ("Launching server whilst an active server process is already open", 10, self.name, "launch_server()")
 
     def launch_server_dry (self, shared_dir):
         server_args_raw = []
@@ -966,8 +976,7 @@ class Server:
         self.manual_shutdown_flag = True
 
     def execute_server_kill (self):
-        self.manual_kill_flag = True
-        self.shutdown_server ()
+        self.shutdown_server()
 
     def wake_server (self):
         self.server_info.server_status_change (1)
@@ -988,6 +997,7 @@ class Server:
             self.kill_server()
     
     def shutdown_server(self):
+        self.manual_kill_flag = True
         self.stop_server()
         self.reset_vars()
         self.server_info.server_status_change (-3)
@@ -1030,8 +1040,8 @@ class Server:
             self.init_motd()
 
         time.sleep (0.5)
-        self.stop_server()
-        time.sleep (1)
+        self.shutdown_server()
+        time.sleep (2)
         self.start_server()
         
     def idle_server (self):
@@ -1050,6 +1060,8 @@ class Server:
         self.current_line = 0
         self.server_started = False
         self.last_crash = None
+        self.manual_kill_flag = False
+        self.manual_shutdown_flag = False
 
     def init_motd (self):
         path = self.saved_file_path
@@ -1103,8 +1115,6 @@ class Server:
             server_logging = True
 
             while server_logging and not self.manual_kill_flag:
-                time.sleep(3)
-
                 # Setup the log file for reading
                 try:
                     self.log = pygtail.Pygtail(self.log_file_path)
@@ -1124,8 +1134,8 @@ class Server:
                     if not self.manual_shutdown_flag:
                         if self.server_process != None:
                             if self.server_process.poll() != None:
-                                self.server_crashed()
                                 server_active = False
+                                self.server_crashed()
                                 break
                         else:
                             self.server_crashed()
@@ -1176,16 +1186,16 @@ class Server:
                                 self.server_info.game_loading (game_loading)
                                 
                                 if self.manual_shutdown_flag:
-                                    self.shutdown_server()
                                     server_active = False
                                     server_logging = False
+                                    self.shutdown_server()
                                     break
 
                                 if self.active_hours:
                                     if not self.is_active_hours ():
-                                        self.suspend_server()
                                         server_active = False
                                         server_logging = False
+                                        self.suspend_server()
                                         break
 
                                 if self.server_info.gamemode_changes > self.max_reloads:
@@ -1245,6 +1255,9 @@ class Server:
                                     self.server_started = True
                                 
                     time.sleep(self.log_check_interval)
+        MeshedLogging.write_to_log_error ("Ending analysis thread", 10, self.name, "analyze_log()")
+        self.analysis_thread = None
+
 
 class ServerInfo:
     def __init__ (self, name):
@@ -1632,7 +1645,8 @@ def generate_global_config ():
         'web_server_port': 5000
     }
     new_config['General'] = {
-        'log_checking_interval': 4
+        'log_checking_interval': 4,
+        'debug_logging_level': 30
     }
     new_config['MOTD'] = {
         'global_server_motd': ''
@@ -1653,6 +1667,8 @@ def main ():
     init_all_servers ()
 
     init_report_checking_thread()
+
+    init_ban_lists()
 
     init_web_server()
 
@@ -1694,6 +1710,9 @@ def report_checking_thread ():
 def init_web_server ():
     web_server_port = get_global_config ()['WebServer']['web_server_port']
     waitress.serve (app, listen=f"0.0.0.0:{web_server_port}", threads=8)
+
+def init_ban_lists ():
+    update_server_banlists()
 
 if __name__ == '__main__':
     main()
