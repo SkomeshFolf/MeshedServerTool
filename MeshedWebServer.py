@@ -1041,7 +1041,7 @@ class Server:
 
         time.sleep (0.5)
         self.shutdown_server()
-        time.sleep (2)
+        time.sleep (self.log_check_interval + 2)
         self.start_server()
         
     def idle_server (self):

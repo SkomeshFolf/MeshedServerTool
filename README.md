@@ -103,6 +103,9 @@
 
     ## Changelog
 
+        - 2.1.2
+            Hotfix for server restarting not properly ending analysis threads
+
         - 2.1.1
             Added extra calls to ensure banlists get updated on server and manager start
             Fixed server restarting due to "crashing" when Stop Server After Game is executed
