@@ -103,6 +103,9 @@
 
     ## Changelog
 
+        - 2.1.3
+            Added gamemode for Testing Chambers
+
         - 2.1.2
             Hotfix for server restarting not properly ending analysis threads
 
