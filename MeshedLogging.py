@@ -79,6 +79,9 @@ def register_session_created (server):
 def register_server_empty (server):
     write_to_log (server, "Server empty.")
 
+def register_chat_message (server, player, message):
+    write_to_chat_log (server, player, message)
+
 def write_to_log (server, content):
     log_dir = get_log_dir()
 
@@ -90,6 +93,19 @@ def write_to_log (server, content):
     formatted_datetime = current_datetime.strftime("%d-%m-%Y %Hh%M")
     with open(log_file, 'a') as log:
         log.write(f"\n[{formatted_datetime}] {server} - {content}")
+
+def write_to_chat_log (server, player, message):
+    log_dir = get_log_dir()
+    log_file = os.path.join (log_dir, "chat.txt")
+
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime("%d-%m-%Y %Hh%M")
+
+    if not os.path.exists (log_file):
+        create_chat_log ()
+
+    with open(log_file, 'a') as log:
+        log.write(f"\n[{formatted_datetime}] {server} - [{player}] {message}")
 
 def write_to_log_error (content, severity_int: LogLevel=30, server="", method=""):
     if severity_int < get_config_reporting_level():
@@ -134,6 +150,14 @@ def create_log_file():
     
     with open(log_file, 'w') as log:
         log.write(f"[Start of log file: {formatted_datetime}]\n")
+
+def create_chat_log ():
+    log_dir = get_log_dir ()
+    log_file = os.path.join (log_dir, "chat.txt")
+
+    if not os.path.exists (log_file):
+        with open (log_file, 'w') as log:
+            log.write("Start of chat logs.\n\n")
 
 def save_log_file():
     log_dir = get_log_dir()

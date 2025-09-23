@@ -73,6 +73,14 @@ def log_is_player_leave (line):
     
     return None
 
+
+def log_is_chat_message (line):
+    match = re.search(r"LogChat: \[(.*)\]: (.*)$", line)
+    if match:
+        return match.group(1), match.group(2)
+    else:
+        return None, None
+
 def log_is_player_id(log_file_path):
     steam_ids = set()
 

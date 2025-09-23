@@ -46,11 +46,27 @@
                     $('#logs').append(listItem);
                 }
             }
+            function update_chat (event)
+            {
+                var chat = JSON.parse (event.data);
+
+                $('#chat').empty();
+                for (var i = 0; i < chat.length; i++)
+                {
+                    var element = chat[i];
+                    var listItem = $('<li></li>').addClass('list-group-item');
+                    listItem.text(element);
+                    $('#chat').append(listItem);
+                }
+
+            }
 
             var eventSource = new EventSource ('/stream-server-info-encoded');
             eventSource.addEventListener('message', update_server_info);
             var logEventSource = new EventSource ('/stream-all-server-logs');
             logEventSource.addEventListener('message', update_logs);
+            var logEventSource = new EventSource ('/stream-all-chat-logs');
+            logEventSource.addEventListener('message', update_chat);
         });
     </script>
 </head>
@@ -93,13 +109,24 @@
         <br>
     </div>
     <div class="container">
-        <h1 class="header_text_class">Logs</h1>
+        <div class="row">
+            <div class="col-md-6">
+                <h1 class="header_text_class">Logs</h1>
 
-        <ul class="list-group" id="logs">
-            {% for log in logs %}
-                <li class="list-group-item">{{ log }}</li>
-            {% endfor %}
-        </ul>
+                <ul class="list-group" id="logs">
+                    {% for log in logs %}
+                        <li class="list-group-item">{{ log }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h1 class="header_text_class">Chat</h1>
+                <div class="card" style="height: 300px; overflow: auto;">
+                    <ul class="list-group" id="chat">
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
 </body>
 </html>

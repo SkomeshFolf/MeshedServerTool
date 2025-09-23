@@ -58,6 +58,12 @@
                         </a>
                     </li>
                     <li class="nav-item mx-2">
+                        <a href="{{ url_for ('web_server_chat_page', page=1) }}" class="nav-link d-flex flex-column align-items-center">
+                            <img src="{{ url_for('static', filename='icon_logs.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
+                            <span class="d-none d-md-block">Chat</span>
+                        </a>
+                    </li>
+                    <li class="nav-item mx-2">
                         <a href="{{ url_for ('web_server_create_server_page')}}" class="nav-link d-flex flex-column align-items-center"> 
                             <img src="{{ url_for('static', filename='icon_create.svg') }}" class="bi d-block mx-auto mb-1" width="32" height="32">
                             <span class="d-none d-md-block">Add Server</span>

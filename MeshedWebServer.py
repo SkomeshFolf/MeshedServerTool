@@ -153,6 +153,18 @@ def stream_all_server_logs():
                 time.sleep (2)
     return Response(generate(), mimetype='text/event-stream')
 
+@app.route('/stream-all-chat-logs')
+@login_required
+def stream_all_chat_logs():
+    def generate():
+        with app.app_context():
+            while True:
+                logs = get_chat_logs()
+                yield f"data: {json.dumps(logs)}\n\n"
+
+                time.sleep (2)
+    return Response(generate(), mimetype='text/event-stream')
+
 @app.route('/server/<server_name>/stream-server-logs')
 @login_required
 def stream_server_logs(server_name):
@@ -160,6 +172,18 @@ def stream_server_logs(server_name):
         with app.app_context():
             while True:
                 logs = get_logs(server=server_name)
+                yield f"data: {json.dumps(logs)}\n\n"
+
+                time.sleep (2)
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/server/<server_name>/stream-chat-logs')
+@login_required
+def stream_chat_logs(server_name):
+    def generate():
+        with app.app_context():
+            while True:
+                logs = get_chat_logs(server=server_name)
                 yield f"data: {json.dumps(logs)}\n\n"
 
                 time.sleep (2)
@@ -291,11 +315,22 @@ def steamcmd_guide ():
 def web_server_logs_page (page=1):
     return render_template ('logs.html', page=page)
 
+@app.route ('/chat/<page>')
+@login_required
+def web_server_chat_page (page=1):
+    return render_template ('chat.html', page=page)
+
 @app.route ('/logs/page-size', methods=['GET'])
 @login_required
 def get_log_pages ():
     page_size = int (request.args.get('page_size'))
     return jsonify (read_log_pages (page_size)), 200
+
+@app.route ('/chat/page-size', methods=['GET'])
+@login_required
+def get_chat_pages ():
+    page_size = int (request.args.get('page_size'))
+    return jsonify (read_chat_log_pages (page_size)), 200
 
 @app.route ('/logs', methods=['GET'])
 @login_required
@@ -303,6 +338,13 @@ def get_page_logs ():
     page = int (request.args.get ('page'))
     page_size = int(request.args.get ('page_size'))
     return jsonify (get_logs (line_count=page_size, start_range=(page - 1) * page_size)), 200
+
+@app.route ('/chat', methods=['GET'])
+@login_required
+def get_chat_logs_page ():
+    page = int (request.args.get ('page'))
+    page_size = int(request.args.get ('page_size'))
+    return jsonify (get_chat_logs (line_count=page_size, start_range=(page - 1) * page_size)), 200
 
 @app.route ('/control-server', methods=['PUT'])
 @login_required
@@ -329,6 +371,11 @@ def control_server ():
 def request_management_settings(server_name):
     return jsonify(get_management_settings(server_name))
 
+@app.route('/server/<server_name>/map-settings', methods=['GET'])
+@login_required
+def request_map_settings(server_name):
+    return jsonify(get_map_settings(server_name))
+
 @app.route('/server/<server_name>/players-settings', methods=['GET'])
 @login_required
 def request_players_settings(server_name):
@@ -349,6 +396,15 @@ def request_gameplay_settings(server_name):
 def submit_management_settings (server_name):
     try:
         result = apply_management_settings (server_name, request.get_json())
+        return result
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+@app.route('/server/<server_name>/map-settings', methods=['PUT'])
+@login_required
+def submit_map_settings (server_name):
+    try:
+        result = apply_map_settings (server_name, request.get_json())
         return result
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -462,6 +518,22 @@ def get_management_settings (server):
 
     return config_dict
 
+def get_map_settings (server):
+    path = get_server_config_paths (server)
+    config = read_config (path)
+    config_dict = {}
+    for section in config.sections():
+        config_dict[section] = {}
+        for key, value in config.items (section):
+            config_dict[section][key] = value
+
+    try:
+        config_output = config_dict['Map']
+    except KeyError:
+        config_output = {}
+
+    return config_output
+
 def get_players_settings (server):
     path = get_server_config_paths (server)
     config = read_config (path)
@@ -525,8 +597,30 @@ def apply_management_settings (server, settings):
         path = get_server_config_paths (server)
         config = read_config (path)
 
+        if not config.has_section('General'):
+            config.add_section('General')
+
         for key, value in settings.items():
             config.set ('General', key, str(value))
+
+        with open(path, 'w') as configfile:
+            config.write(configfile)
+
+        return jsonify ({'status' : 'success'}), 200
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
+    
+def apply_map_settings (server, settings):
+    try:
+        path = get_server_config_paths (server)
+        config = read_config (path)
+
+        if not config.has_section('Map'):
+            config.add_section('Map')
+
+        for key, value in settings.items(): 
+            value_replaced = str (value).replace('~', '?').replace ('-', '=')
+            config.set ('Map', key, value_replaced)
 
         with open(path, 'w') as configfile:
             config.write(configfile)
@@ -742,6 +836,43 @@ def get_logs(line_count=10, start_range=0, server=None):
         return output_lines[start_range:end_range]
     else:
         return []
+    
+def get_chat_logs(line_count=30, start_range=0, server=None):
+    global app_name, app_author
+
+    output_lines = None
+    try:
+        with open (os.path.join (platformdirs.user_log_dir(app_name, app_author, ensure_exists=True), "chat.txt"), 'r') as logs:
+            all_lines = logs.readlines()
+            if server:
+                all_the_chat_logs = []
+                for log in all_lines:
+                    match = re.match(r'^\[(.*?)\] (.*?) - \[(.+)\] (.*)$', log)
+                    if match:
+                        timestamp, server_name, player, message = match.groups()
+                        if server_name == server:
+                            all_the_chat_logs.append(log)
+                output_lines = all_the_chat_logs
+            else:
+                output_lines = all_lines 
+    except PermissionError as e:
+        print ("Permission error accessing chat logs")
+    except FileNotFoundError as e:
+        print ("FileNotFound error accessing chat logs. Is the server manager running?")
+    except Exception as e:
+        print (e)
+    
+    if output_lines:
+        if start_range >= len(output_lines):
+            return []  
+        
+        output_lines.reverse()
+
+        end_range = min(start_range + line_count, len(output_lines))
+
+        return output_lines[start_range:end_range]
+    else:
+        return []
 
 def read_log_pages (page_size=10):
     global app_name, app_author
@@ -749,6 +880,22 @@ def read_log_pages (page_size=10):
 
     try:
         with open(os.path.join (platformdirs.user_log_dir(app_name, app_author, ensure_exists=True), "log.txt"), 'r') as file:
+            line_count = sum(1 for _ in file)
+    except PermissionError as e:
+        print ("Permission error accessing logs")
+    except FileNotFoundError as e:
+        print ("FileNotFound error accessing logs")
+    except Exception as e:
+        print (e)
+
+    return math.ceil (line_count / page_size)
+
+def read_chat_log_pages (page_size=10):
+    global app_name, app_author
+    line_count = 0
+
+    try:
+        with open(os.path.join (platformdirs.user_log_dir(app_name, app_author, ensure_exists=True), "chat.txt"), 'r') as file:
             line_count = sum(1 for _ in file)
     except PermissionError as e:
         print ("Permission error accessing logs")
@@ -819,8 +966,6 @@ class Server:
         self.install_dir = self.config['General']['install_dir']
         self.shared_dir = ast.literal_eval (self.config['General']['shared_install_dir'])
         self.max_reloads = int(self.config['General']['max_reloads'])
-        self.starting_gamemode = self.config['General']['starting_gamemode']
-        self.restricted_gamemode = self.config['General']['restricted_gamemode']
         self.port = int(self.config['General']['port'])
         self.query_port = int(self.config['General']['queryport'])
         self.server_args = self.config['General']['server_args']
@@ -836,6 +981,15 @@ class Server:
             self.active_hours = True
             self.start_time = datetime.strptime (timeSplit[0], '%H:%M').time()
             self.end_time = datetime.strptime (timeSplit[1], '%H:%M').time()
+
+        if (self.config.has_section ('Map')):
+            self.maps_radio = self.config['Map']['maps_radio']
+            self.starting_gamemode = self.config['Map']['starting_gamemode']
+            self.map_rotation = self.config['Map']['map_rotation']
+        else:
+            self.maps_radio = None
+            self.starting_gamemode = None
+            self.map_rotation = None
         
         self.check_if_valid_install_dir()
         
@@ -927,13 +1081,28 @@ class Server:
 
             server_name = config['/Game/SCPPandemic/Blueprints/GI_PandemicGameInstance.GI_PandemicGameInstance_C']['servername']
 
-            essential_server_args = [
-                self.starting_gamemode,
+            if self.maps_radio == "standby":
+                essential_server_args = [
+                    "M_ServerDefault"
+                ]
+            else:
+                essential_server_args = [
+                    self.starting_gamemode
+                ]
+
+            if self.maps_radio == "single":
+                essential_server_args.append (f"-maprotation={self.starting_gamemode}")
+            else:
+                if self.map_rotation is not None:
+                    map_rotation_list = ast.literal_eval (self.map_rotation)
+                    essential_server_args.append (f"-maprotation={",".join(map_rotation_list)}")
+
+            essential_server_args.extend ([
                 '-log',
                 f"-port={self.port}",
                 f"-queryport={self.query_port}",
                 f"-SteamServerName={server_name}"
-            ]
+            ])
 
             if self.shared_dir:
                 essential_server_args.append (f"-Log={self.name}/{self.name}.log")
@@ -1202,25 +1371,11 @@ class Server:
                                     self.restart_server(f"Server reloaded {self.server_info.gamemode_changes} times")
                                     server_active = False
                                     break
-                                elif self.restricted_gamemode != '':
-                                    delimited_string = self.restricted_gamemode.split('?')
-                                    if len (delimited_string) == 1:
-                                        if self.server_info.current_game != delimited_string[0]:
-                                            self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
-                                            server_active = False
-                                            break
 
                             # Is a new gamemode?
                             gamemode = MeshedRegex.log_is_new_gamemode (line)
                             if gamemode:
                                 self.server_info.new_gamemode (gamemode)
-
-                                delimited_string = self.restricted_gamemode.split('?')
-                                if len (delimited_string) > 1:
-                                    if self.server_info.current_game != delimited_string[0] or self.server_info.current_gamemode != delimited_string[1]:
-                                        self.restart_server(f"Server loaded a gamemode that is not {self.restricted_gamemode}")
-                                        server_active = False
-                                        break
 
                             # Has session been created?
                             session_create = MeshedRegex.log_is_session_creation (line)
@@ -1244,6 +1399,11 @@ class Server:
                             if player_id:
                                 if player_id in self.server_info.current_users:
                                     self.server_info.player_leave(player_id)
+                            
+                            # Is the latest log a chat message? Log it.
+                            chatter, chat_message = MeshedRegex.log_is_chat_message (line)
+                            if chatter:
+                                self.server_info.chat_message (chatter, chat_message)
   
                             # Is this the first time the server has started? Init the server.
                             if not self.server_started:
@@ -1333,6 +1493,10 @@ class ServerInfo:
     def session_created (self):
         self.server_status_change (4)
         MeshedLogging.register_session_created (self.name)
+
+    def chat_message (self, chatter, message):
+        MeshedLogging.register_chat_message (self.name, chatter, message)
+
 
     def reset_game_variables (self):
         self.player_deaths = 0
@@ -1598,11 +1762,15 @@ def generate_config(config_file_path):
         'saved_path_dont_touch': '',
         'max_reloads': '7',
         'starting_gamemode': '',
-        'restricted_gamemode': '',
         'port': '7777',
         'queryport': '27015',
         'server_args': '',
         'active_hours': ''
+    }
+    newConfig['Map'] = {
+        'maps_radio': '',
+        'starting_gamemode': '',
+        'map_rotation': ''
     }
     newConfig['MOTD'] = {
         'motd': '',
@@ -1680,6 +1848,7 @@ def init_set_user_dirs ():
 
 def init_logging ():
     MeshedLogging.create_log_file()
+    MeshedLogging.create_chat_log()
     logging.basicConfig(level=logging.ERROR)
     logger = logging.getLogger('waitress')
     logger.setLevel (logging.ERROR)
@@ -1709,7 +1878,7 @@ def report_checking_thread ():
 
 def init_web_server ():
     web_server_port = get_global_config ()['WebServer']['web_server_port']
-    waitress.serve (app, listen=f"0.0.0.0:{web_server_port}", threads=8)
+    waitress.serve (app, listen=f"[::]:{web_server_port}", threads=8)
 
 def init_ban_lists ():
     update_server_banlists()

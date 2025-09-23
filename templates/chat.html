@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Server Logs</title>
+    <title>Chat</title>
     {% include 'head.html' %}
 
     <script>
@@ -13,7 +13,7 @@
         function initPaginationPages () 
         {
             page_size = getPageSize ();
-            actionURL = "/logs/page-size?page_size=" + page_size;
+            actionURL = "/chat/page-size?page_size=" + page_size;
             $.ajax ({
                 url: actionURL,
                 type: 'GET',
@@ -29,7 +29,7 @@
         function initLogs ()
         {
             page_size = getPageSize ();
-            actionURL = "/logs?page_size=" + page_size + "&page=" + $("#page").text();
+            actionURL = "/chat?page_size=" + page_size + "&page=" + $("#page").text();
             $.ajax ({
                 url: actionURL,
                 type: 'GET',
@@ -56,7 +56,7 @@
 
         function getPageSize ()
         {
-            let name = "page_size=";
+            let name = "page_chat_size=";
             let decodedCookie = decodeURIComponent(document.cookie);
             let ca = decodedCookie.split(';');
 
@@ -73,7 +73,7 @@
         }
         function setPageSize (size)
         {
-            var name = "page_size";
+            var name = "page_chat_size";
             var timeToLive = 60*60*24*30;
             var cookie = name + "=" + encodeURIComponent (size);
             cookie += "; max-age=" + timeToLive;
@@ -221,11 +221,11 @@
             <div class="d-inline mb-0 ms-auto me-0">
                 <span class="d-inline float-start me-3 mt-2">Logs Per Page</span>
                 <select id="page_size_select" class="form-select" style="width: 96px;">
-                    <option selected value="10">10</option>
-                    <option value="20">20</option>
-                    <option value="30">30</option>
+                    <option selected value="30">30</option>
                     <option value="50">50</option>
+                    <option value="70">70</option>
                     <option value="100">100</option>
+                    <option value="200">200</option>
                 </select>
             </div>
         </nav>
