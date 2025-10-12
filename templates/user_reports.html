@@ -82,7 +82,7 @@
         {
             $("#banBtn").click (function () {
                 $.ajax({
-                    url: "/reports/ban",
+                    url: "/reports",
                     type: 'POST',
                     contentType: 'text/plain',
                     data: selectedReport['target_id'],
@@ -98,8 +98,8 @@
             /*
             $("#deleteReportBtn").click (function () {
                 $.ajax({
-                    url: "/reports/delete",
-                    type: 'POST',
+                    url: "/reports",
+                    type: 'DELETE',
                     contentType: 'text/plain',
                     data: selectedReport['hash'],
                     success: function(response) {
@@ -116,10 +116,9 @@
                 $("#respondReportBtn").prop('disabled', true);
                 reports = reports.filter (obj => obj.hash !== selectedReport['hash']);
                 addAllReports();
-                console.log (reports);
                 $.ajax({
-                    url: "/reports/read",
-                    type: 'POST',
+                    url: "/reports",
+                    type: 'PUT',
                     contentType: 'text/plain',
                     data: selectedReport['hash'],
                     success: function(response) {
@@ -158,7 +157,7 @@
         }
         function initLiveReportStream()
         {
-            var logEventSource = new EventSource ('/stream_new_reports');
+            var logEventSource = new EventSource ('/stream-new-reports');
             logEventSource.addEventListener('message', updateNewReports);
         }
         function updateNewReports (event)

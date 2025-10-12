@@ -2,7 +2,7 @@
     # Meshed Server Tool
 
     Author: Skomesh
-    Version 2.0.4
+    Version 2.2.0
 
     Meshed Server Tool is a locally hosted web interface and server manager SCP: 5k or SCP Pandemic Dedicated Servers.
 
@@ -79,18 +79,17 @@
 
         # Server Manager Settings
         Meshed Server Tool saves all of its settings in appdata or .local directories. You can find them at:
-        C:\Users\User\AppData\Local\Skomesh\Meshed Server Tool
+        C:\Users\User\AppData\Local\user\Meshed Server Tool
         or
         /home/user/.local/share/Meshed Server Tool
         /home/user/.config/Meshed Server Tool
         
 
     ## TODO
-        Fix server name changing
+        Change streams from loops to wait for changes
         Viewable global ban list
         Settings for logging speed
         Integrated server updater
-        More reliable reports menu
         Show read reports, not just new ones
         Bug fixing, exception handling
         MOTD messages, global and server specific
@@ -103,6 +102,27 @@
 
 
     ## Changelog
+
+        - 2.2.0
+            Uses the new format for map rotation
+            Added chat logging
+
+        - 2.1.3
+            Added gamemode for Testing Chambers
+
+        - 2.1.2
+            Hotfix for server restarting not properly ending analysis threads
+
+        - 2.1.1
+            Added extra calls to ensure banlists get updated on server and manager start
+            Fixed server restarting due to "crashing" when Stop Server After Game is executed
+            Other general fixes
+            Added global config value for debug logging level. In future updates there will be more logging and error log viewer, but for now this is all
+            Fixed the toast message for start/stop messages to the server to now appear when the button clicks instead of on success
+
+        - 2.1.0
+            This update should add responsiveness by removing unnecessary IPC by consolidating the server manager and web server into one process and file
+            Moved many similar functions to their own files
 
         - 2.0.4
             Fixed "Only play this gamemode" being set to Axiom PvP not working
