@@ -23,6 +23,13 @@
                          on the end user of this program (you).
     
 
+
+
+## V3 planning
+
+MeshedServerTool V3 planning docs live in [`docs/`](docs/). The current V3 framing is Meshed-first: preserve SCP:5K/Pandemic server-manager parity first, then add modular managed-service profiles such as A3AINPC later.
+
+
     ## Required Software
 
         Python 3.12 or newer
