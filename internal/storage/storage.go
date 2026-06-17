@@ -238,6 +238,35 @@ func allMigrations() []migration {
 				return err
 			},
 		},
+		{
+			version: 6,
+			name:    "coalesce-null-server-state-strings",
+			up: func(tx *sql.Tx) error {
+				// The server_state columns current_map and current_gamemode
+				// are declared without a NOT NULL constraint (and we don't
+				// want to add one retroactively, since a NULL means "never
+				// observed" and that's a legitimate state). But the Go side
+				// scans them into a plain `string`, which fails on a NULL
+				// column. Coalesce any existing NULLs to '' so the manager
+				// rehydration path on boot doesn't crash. New rows from
+				// here on are populated as empty strings by the seed code
+				// in CreateServer.
+				//
+				// Idempotent: the WHERE clause means a re-run on an already-
+				// coalesced DB affects zero rows. No error path to worry about.
+				if _, err := tx.Exec(
+					`UPDATE server_state SET current_map = '' WHERE current_map IS NULL`,
+				); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(
+					`UPDATE server_state SET current_gamemode = '' WHERE current_gamemode IS NULL`,
+				); err != nil {
+					return err
+				}
+				return nil
+			},
+		},
 	}
 }
 

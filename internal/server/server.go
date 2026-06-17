@@ -270,6 +270,14 @@ type Server struct {
 	cancel     context.CancelFunc
 	logBuf     *logs.Buffer
 	logBufOnce sync.Once
+
+	// stdin is the writer end of the subprocess's stdin pipe. We hold
+	// it here (rather than letting exec.Cmd keep it) so the API layer
+	// can write to it via WriteStdin(). It's nil when the process is
+	// not running. stdinMu serialises writes — multiple concurrent
+	// console requests must not interleave bytes in the same line.
+	stdin   io.WriteCloser
+	stdinMu sync.Mutex
 }
 
 // publishState broadcasts the current state to the hub. Caller must NOT
@@ -383,6 +391,16 @@ func (s *Server) Start(ctx context.Context) error {
 		s.mu.Unlock()
 		return fmt.Errorf("stderr pipe: %w", err)
 	}
+	// StdinPipe: lets the API layer write to the subprocess's stdin.
+	// The writer side is retained on the Server struct; if Start() fails
+	// below or the process never spawns, we close it to release the
+	// descriptor. Stop() and the Wait goroutine also close it so the
+	// child sees EOF on stdin at shutdown.
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("stdin pipe: %w", err)
+	}
 
 	// Mark starting
 	now := time.Now().UTC()
@@ -393,6 +411,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.state.Status = storage.StatusStarting
 	s.state.StartedAt = &now
 	s.cmd = cmd
+	s.stdin = stdinPipe
 	buf := s.logBufLazy() // allocate buffer while we hold the lock
 	s.mu.Unlock()
 	s.publishState() // broadcast the "starting" event
@@ -401,6 +420,12 @@ func (s *Server) Start(ctx context.Context) error {
 		s.mu.Lock()
 		s.cancel = nil
 		s.cmd = nil
+		// Close the stdin pipe to release the descriptor and let any
+		// pending goroutines unblock with io.ErrClosedPipe.
+		if s.stdin != nil {
+			_ = s.stdin.Close()
+			s.stdin = nil
+		}
 		s.state.Status = storage.StatusCrashed
 		_ = s.store.Servers().UpdateStateStatus(ctx, s.cfg.Name, storage.StatusCrashed, nil, nil, ptrTime(time.Now().UTC()), nil)
 		s.mu.Unlock()
@@ -445,6 +470,14 @@ func (s *Server) Start(ctx context.Context) error {
 				s.cfg.Name, final, nil, nil, &stoppedAt, &exitCode)
 			s.cmd = nil
 			s.cancel = nil
+		}
+		// Always close the stdin writer when the process exits, even
+		// if the process died unexpectedly (e.g. crash, OOM kill). This
+		// releases the descriptor and signals EOF to anything that was
+		// holding the read end. After this, WriteStdin returns an error.
+		if s.stdin != nil {
+			_ = s.stdin.Close()
+			s.stdin = nil
 		}
 		s.mu.Unlock()
 		if wasRunning {
@@ -525,6 +558,30 @@ func (s *Server) buildCommand() (string, []string) {
 		}
 	}
 	return exe, argv
+}
+
+// WriteStdin writes a single line (or arbitrary bytes — the caller
+// decides on framing, but typically with a trailing '\n') to the
+// subprocess's stdin. Returns an error if the server isn't running or
+// the write fails.
+//
+// We serialise calls with s.stdinMu so that two concurrent /stdin
+// requests don't interleave bytes in the middle of a line. The lock is
+// only held for the duration of the write; it does not guard the
+// process lifecycle.
+//
+// Note: we DON'T hold s.mu while writing — that would block state
+// updates (start/stop) for the duration of a slow stdout-stuck
+// subprocess. stdinMu is its own lock.
+func (s *Server) WriteStdin(p []byte) error {
+	s.stdinMu.Lock()
+	w := s.stdin
+	s.stdinMu.Unlock()
+	if w == nil {
+		return errors.New("server is not running")
+	}
+	_, err := w.Write(p)
+	return err
 }
 
 // pumpPipe copies lines from r into buf with a stream tag.

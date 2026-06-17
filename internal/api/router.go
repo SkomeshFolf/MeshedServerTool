@@ -42,6 +42,7 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 	motdDeps := &v1MotdDeps{store: motdStore}
 	settingsDeps := &v1SettingsDeps{store: store, manager: manager, bans: bansStore}
 	tabsDeps := &v1TabsDeps{store: store, manager: manager}
+	consoleDeps := &v1ConsoleDeps{manager: manager}
 
 	mux.Handle("/api/v1/auth/", http.StripPrefix("/api/v1/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := strings.TrimPrefix(r.URL.Path, "/")
@@ -120,6 +121,22 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 			r2 := r.Clone(r.Context())
 			r2.Header.Set("X-Meshed-Server-Name", serverName)
 			tabsDeps.ServeHTTP(w, r2)
+			return
+		}
+		// /stdin and /stdin/line — per-server console write endpoints.
+		// We forward to the console handler with the server name as
+		// the first path segment (matching the /settings pattern).
+		if strings.HasSuffix(path, "/stdin") || strings.HasSuffix(path, "/stdin/line") {
+			trimmed := strings.TrimPrefix(r.URL.Path, "/")
+			parts := strings.SplitN(trimmed, "/", 2)
+			serverName := parts[0]
+			rest := ""
+			if len(parts) > 1 {
+				rest = parts[1]
+			}
+			r2 := r.Clone(r.Context())
+			r2.URL.Path = "/" + serverName + "/" + rest
+			consoleDeps.ServeHTTP(w, r2)
 			return
 		}
 		serverDeps.ServeHTTP(w, r)

@@ -206,6 +206,57 @@ dl.kv dd { margin: 0; }
 .log-stderr { color: #f59e0b; }
 .log-typed .log-type { color: var(--accent); font-weight: 600; margin-right: 0.4rem; }
 
+.console {
+  margin-top: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.console-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+.console-scrollback {
+  background: #06080c;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  padding: 0.5rem 0.75rem;
+  max-height: 14rem;
+  overflow: auto;
+  min-height: 4rem;
+}
+.console-line { white-space: pre-wrap; }
+.console-input-row {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.console-input-row textarea {
+  flex: 1;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+.console-input-row textarea:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+.console-input-row textarea:disabled { opacity: 0.6; }
+
 code {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
   background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 3px;

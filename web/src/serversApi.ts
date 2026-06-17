@@ -309,3 +309,22 @@ export const tabsApi = {
       tabsApi.put<{ ok: boolean }>(serverName, "gameplay", entries),
   },
 };
+
+// --- Console I/O ---
+//
+// Per-server stdin endpoint. Used by the Console panel on the server
+// detail page. The /stdin/line variant appends '\n' for us; the /stdin
+// variant writes raw bytes (admin-only escape hatch).
+
+export const consoleApi = {
+  sendLine: (name: string, text: string) =>
+    request<{ ok: boolean }>(`/api/v1/servers/${encodeURIComponent(name)}/stdin/line`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  sendRaw: (name: string, input: string) =>
+    request<{ ok: boolean }>(`/api/v1/servers/${encodeURIComponent(name)}/stdin`, {
+      method: "POST",
+      body: JSON.stringify({ input }),
+    }),
+};

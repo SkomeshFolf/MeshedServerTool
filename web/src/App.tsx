@@ -19,6 +19,7 @@ import SettingsTabsPage from "./pages/SettingsTabs";
 import AggregateLogsPage from "./pages/AggregateLogs";
 import AggregateChatsPage from "./pages/AggregateChats";
 import SteamCmdGuidePage from "./pages/SteamCmdGuide";
+import Console from "./pages/Console";
 import "./styles.css";
 
 export default function App() {
@@ -523,6 +524,9 @@ function ServerDetailPage({ name }: { name: string }) {
 
       <h3>Logs</h3>
       <LogViewer name={name} />
+
+      <h3>Console</h3>
+      <Console serverName={name} enabled={isRunning} />
 
       <p style={{ marginTop: "1rem" }}>
         <Link to={`/servers/${encodeURIComponent(name)}/chat`}>→ Open chat history</Link>
