@@ -1,0 +1,67 @@
+:root {
+  color-scheme: dark light;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --bg: #0f1115;
+  --panel: #181b22;
+  --border: #262a33;
+  --text: #e6e8ec;
+  --muted: #8a92a1;
+  --accent: #4f8cff;
+  --ok: #4ade80;
+  --err: #f87171;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar h1 {
+  font-size: 1.1rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+.topbar nav a {
+  color: var(--text);
+  text-decoration: none;
+  margin-right: 1rem;
+}
+
+.topbar nav a:hover { color: var(--accent); }
+
+.health { margin-left: auto; font-size: 0.85rem; }
+.health .ok { color: var(--ok); }
+.health .err { color: var(--err); }
+
+main { padding: 1.5rem; }
+
+.muted { color: var(--muted); }
+
+.dashboard, .login {
+  max-width: 64rem;
+  margin: 0 auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}

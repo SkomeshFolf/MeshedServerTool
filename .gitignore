@@ -1,2 +1,14 @@
-__pycache__/
-.vscode
+# Build output
+/meshed
+/meshed.exe
+/web/dist/
+/web/node_modules/
+*.log
+
+# Local data
+/data/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
