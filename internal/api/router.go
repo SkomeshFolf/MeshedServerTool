@@ -8,12 +8,13 @@ import (
 	"strings"
 
 	"github.com/Skomesh/MeshedServerTool/internal/auth"
+	"github.com/Skomesh/MeshedServerTool/internal/server"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 	"github.com/Skomesh/MeshedServerTool/web"
 )
 
 // NewRouter constructs the HTTP handler.
-func NewRouter(store *storage.Store, dataDir string) http.Handler {
+func NewRouter(store *storage.Store, manager *server.Manager, dataDir string) http.Handler {
 	mux := http.NewServeMux()
 
 	// Health endpoint (used by orchestrators, also a quick smoke test)
@@ -24,32 +25,38 @@ func NewRouter(store *storage.Store, dataDir string) http.Handler {
 
 	// Mount /api/v1 subrouter
 	authSvc := auth.NewService(store)
-	deps := &v1AuthDeps{svc: authSvc, store: store}
+	authDeps := &v1AuthDeps{svc: authSvc, store: store}
+	serverDeps := &v1ServerDeps{store: store, manager: manager}
+
 	mux.Handle("/api/v1/auth/", http.StripPrefix("/api/v1/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// /api/v1/auth/  →  /
 		route := strings.TrimPrefix(r.URL.Path, "/")
-		// Auth middleware applies to /me only; everything else is public
-		// so the login page works before the user has a session.
 		if route == "me" {
-			authSvc.Middleware(http.HandlerFunc(deps.handleMe)).ServeHTTP(w, r)
+			authSvc.Middleware(http.HandlerFunc(authDeps.handleMe)).ServeHTTP(w, r)
 			return
 		}
 		switch route {
 		case "login":
-			deps.handleLogin(w, r)
+			authDeps.handleLogin(w, r)
 		case "logout":
-			deps.handleLogout(w, r)
+			authDeps.handleLogout(w, r)
 		case "bootstrap":
-			deps.handleBootstrap(w, r)
+			authDeps.handleBootstrap(w, r)
 		case "status":
-			deps.handleStatus(w, r)
+			authDeps.handleStatus(w, r)
 		default:
 			http.Error(w, "not found: "+r.URL.Path, http.StatusNotFound)
 		}
 	})))
 
+	// /api/v1/servers...  — all auth-protected.
+	// Register both /api/v1/servers/ and /api/v1/servers (no trailing
+	// slash) so clients don't get a 301 redirect to the trailing-slash
+	// form. http.ServeMux treats them as distinct patterns.
+	stripped := http.StripPrefix("/api/v1/servers", serverDeps)
+	mux.Handle("/api/v1/servers/", authSvc.Middleware(stripped))
+	mux.Handle("/api/v1/servers", authSvc.Middleware(stripped))
+
 	// Catch-all for unmounted /api/* — keep the 501 contract from Phase 0
-	// so it's obvious which routes are not yet implemented.
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not implemented: "+r.URL.Path, http.StatusNotImplemented)
 	})
@@ -82,7 +89,6 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.staticFS.Open(path)
 	if err != nil {
-		// Fall back to index.html so React Router can handle the route
 		f, err = h.staticFS.Open("index.html")
 		if err != nil {
 			http.NotFound(w, r)

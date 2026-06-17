@@ -113,6 +113,39 @@ func allMigrations() []migration {
 				return err
 			},
 		},
+		{
+			version: 3,
+			name:    "phase2-servers",
+			up: func(tx *sql.Tx) error {
+				_, err := tx.Exec(`
+					CREATE TABLE servers (
+						name TEXT PRIMARY KEY,
+						install_dir TEXT NOT NULL,
+						port INTEGER NOT NULL DEFAULT 7777,
+						max_players INTEGER NOT NULL DEFAULT 32,
+						hostname TEXT,
+						args_json TEXT NOT NULL DEFAULT '{}',
+						autostart INTEGER NOT NULL DEFAULT 0,
+						created_at TEXT NOT NULL,
+						updated_at TEXT NOT NULL
+					);
+
+					CREATE TABLE server_state (
+						server_name TEXT PRIMARY KEY REFERENCES servers(name) ON DELETE CASCADE,
+						status TEXT NOT NULL DEFAULT 'stopped',
+						pid INTEGER,
+						started_at TEXT,
+						stopped_at TEXT,
+						last_exit_code INTEGER,
+						current_users INTEGER NOT NULL DEFAULT 0,
+						current_map TEXT,
+						current_gamemode TEXT,
+						updated_at TEXT NOT NULL
+					);
+				`)
+				return err
+			},
+		},
 	}
 }
 

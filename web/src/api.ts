@@ -44,6 +44,10 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
+// Internal export so the server-API module can reuse the cookie+JSON
+// machinery without duplicating fetch boilerplate.
+export { request };
+
 export const api = {
   status: () => request<AuthStatus>("/api/v1/auth/status"),
   me: () => request<MeResponse>("/api/v1/auth/me"),

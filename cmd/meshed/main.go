@@ -19,6 +19,7 @@ import (
 
 	"github.com/Skomesh/MeshedServerTool/internal/api"
 	"github.com/Skomesh/MeshedServerTool/internal/config"
+	"github.com/Skomesh/MeshedServerTool/internal/server"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 )
 
@@ -38,16 +39,21 @@ func main() {
 	}
 	log.Printf("data dir: %s", *dataDir)
 
-	// Open storage (Phase 1 will use SQLite; until then, nil-safe stub).
+	// Open storage (Phase 1+ uses SQLite).
 	store, err := storage.Open(filepath.Join(*dataDir, "meshed.db"))
 	if err != nil {
 		log.Fatalf("open storage: %v", err)
 	}
 	defer store.Close()
 
-	// Build router. NewRouter accepts nil store for Phase 0/1 work;
-	// later phases will require a real store.
-	router := api.NewRouter(store, *dataDir)
+	// Build the server manager (Phase 2+). Rehydrates from storage.
+	manager, err := server.NewManager(store)
+	if err != nil {
+		log.Fatalf("init server manager: %v", err)
+	}
+
+	// Build router.
+	router := api.NewRouter(store, manager, *dataDir)
 
 	// Effective listen address
 	listen := *addr
