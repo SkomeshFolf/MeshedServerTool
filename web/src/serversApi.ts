@@ -256,3 +256,56 @@ export const settingsApi = {
       { method: "POST" },
     ),
 };
+
+// --- Per-server settings tabs (v2 parity: Map, Players, Server, Gameplay) ---
+//
+// The v2 web frontend exposed four INI-driven tabs per server. In v3
+// these map to dedicated REST endpoints under
+// /api/v1/servers/{name}/tabs/{tab} with a stable contract documented
+// in internal/api/tabs_handlers.go. We expose them through tabsApi
+// here.
+
+export type TabName = "map" | "players" | "server" | "gameplay";
+
+export interface TabEntries {
+  entries: Record<string, string>;
+}
+export interface PlayersTab {
+  admins: string[];
+  owners: string[];
+  whitelist: string[];
+}
+
+export const tabsApi = {
+  get: <T,>(serverName: string, tab: TabName) =>
+    request<T>(`/api/v1/servers/${encodeURIComponent(serverName)}/tabs/${tab}`),
+  put: <T,>(serverName: string, tab: TabName, body: unknown) =>
+    request<T>(`/api/v1/servers/${encodeURIComponent(serverName)}/tabs/${tab}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  // Strongly-typed convenience for each tab.
+  map: {
+    get: (serverName: string) =>
+      tabsApi.get<TabEntries>(serverName, "map").then((r) => r.entries),
+    put: (serverName: string, entries: Record<string, string>) =>
+      tabsApi.put<{ ok: boolean; entries: Record<string, string> }>(serverName, "map", entries),
+  },
+  players: {
+    get: (serverName: string) => tabsApi.get<PlayersTab>(serverName, "players"),
+    put: (serverName: string, body: PlayersTab) =>
+      tabsApi.put<{ ok: boolean }>(serverName, "players", body),
+  },
+  server: {
+    get: (serverName: string) =>
+      tabsApi.get<TabEntries>(serverName, "server").then((r) => r.entries),
+    put: (serverName: string, entries: Record<string, string>) =>
+      tabsApi.put<{ ok: boolean }>(serverName, "server", entries),
+  },
+  gameplay: {
+    get: (serverName: string) =>
+      tabsApi.get<TabEntries>(serverName, "gameplay").then((r) => r.entries),
+    put: (serverName: string, entries: Record<string, string>) =>
+      tabsApi.put<{ ok: boolean }>(serverName, "gameplay", entries),
+  },
+};

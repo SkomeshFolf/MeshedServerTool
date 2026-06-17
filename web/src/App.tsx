@@ -15,6 +15,7 @@ import BansPage from "./pages/Bans";
 import ChatPage from "./pages/Chat";
 import MotdPage from "./pages/Motd";
 import SettingsPage from "./pages/Settings";
+import SettingsTabsPage from "./pages/SettingsTabs";
 import AggregateLogsPage from "./pages/AggregateLogs";
 import AggregateChatsPage from "./pages/AggregateChats";
 import SteamCmdGuidePage from "./pages/SteamCmdGuide";
@@ -200,6 +201,8 @@ function OutletWrapper({ servers }: { servers: ServerView[] }) {
   if (path === "/steamcmd-guide") return <SteamCmdGuidePage />;
   const settingsMatch = /^\/servers\/([^/]+)\/settings$/.exec(path);
   if (settingsMatch) return <SettingsPage />;
+  const tabsMatch = /^\/servers\/([^/]+)\/settings\/tabs$/.exec(path);
+  if (tabsMatch) return <SettingsTabsPage />;
   const chatMatch = /^\/servers\/([^/]+)\/chat$/.exec(path);
   if (chatMatch) return <ChatPage />;
   const detailMatch = /^\/servers\/([^/]+)$/.exec(path);
@@ -524,7 +527,9 @@ function ServerDetailPage({ name }: { name: string }) {
       <p style={{ marginTop: "1rem" }}>
         <Link to={`/servers/${encodeURIComponent(name)}/chat`}>→ Open chat history</Link>
         {" · "}
-        <Link to={`/servers/${encodeURIComponent(name)}/settings`}>⚙ Settings</Link>
+        <Link to={`/servers/${encodeURIComponent(name)}/settings`}>⚙ Advanced INI</Link>
+        {" · "}
+        <Link to={`/servers/${encodeURIComponent(name)}/settings/tabs`}>🧩 Settings tabs</Link>
       </p>
 
       <p style={{ marginTop: "2rem" }}>

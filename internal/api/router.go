@@ -41,6 +41,7 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 	wsDeps := &v1WebSocketDeps{hub: h}
 	motdDeps := &v1MotdDeps{store: motdStore}
 	settingsDeps := &v1SettingsDeps{store: store, manager: manager, bans: bansStore}
+	tabsDeps := &v1TabsDeps{store: store, manager: manager}
 
 	mux.Handle("/api/v1/auth/", http.StripPrefix("/api/v1/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := strings.TrimPrefix(r.URL.Path, "/")
@@ -71,12 +72,18 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 	//   /api/v1/servers/{name}/settings          → settingsDeps.ServeHTTP
 	//   /api/v1/servers/{name}/settings/{file}   → settingsDeps.ServeHTTP (after /settings stripped)
 	//   /api/v1/servers/{name}/settings/sync-bans → settingsDeps.ServeHTTP
+	//   /api/v1/servers/{name}/tabs/{tab}        → tabsDeps.ServeHTTP
 	//   everything else under /api/v1/servers/*  → serverDeps.ServeHTTP
 	//
 	// We strip the /settings prefix before handing to settingsDeps so
 	// settingsDeps sees the path it expects (e.g. "ini-srv/BannedIDs.ini").
+	//
+	// For /tabs/* we preserve the server name in a request header so the
+	// tabs handler can recover it after http.StripPrefix eats
+	// /api/v1/servers/{name}.
 	serversDispatcher := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/settings") {
+		path := r.URL.Path
+		if strings.Contains(path, "/settings") {
 			// r.URL.Path has had "/api/v1/servers" stripped by http.StripPrefix above,
 			// so it's now like "ini-srv/settings/BannedIDs.ini" or "ini-srv/settings".
 			// Re-prefix the server name so settingsDeps can split it.
@@ -101,6 +108,18 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 			r2 := r.Clone(r.Context())
 			r2.URL.Path = newPath
 			settingsDeps.ServeHTTP(w, r2)
+			return
+		}
+		if strings.Contains(path, "/tabs/") || strings.HasSuffix(path, "/tabs") {
+			// Recover the server name (first path segment after prefix
+			// strip) and pass it through a header so the tabs handler
+			// can look up install_dir.
+			trimmed := strings.TrimPrefix(r.URL.Path, "/")
+			parts := strings.SplitN(trimmed, "/", 2)
+			serverName := parts[0]
+			r2 := r.Clone(r.Context())
+			r2.Header.Set("X-Meshed-Server-Name", serverName)
+			tabsDeps.ServeHTTP(w, r2)
 			return
 		}
 		serverDeps.ServeHTTP(w, r)
