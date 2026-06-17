@@ -37,5 +37,8 @@ func (d *v1ChatDeps) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	if msgs == nil {
+		msgs = []*chat.Message{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
 }

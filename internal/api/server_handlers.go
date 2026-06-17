@@ -88,6 +88,9 @@ func (d *v1ServerDeps) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (d *v1ServerDeps) listServers(w http.ResponseWriter, r *http.Request) {
 	views := d.manager.List()
+	if views == nil {
+		views = []*storage.ServerView{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"servers": views})
 }
 

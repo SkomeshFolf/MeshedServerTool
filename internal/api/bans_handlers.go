@@ -68,6 +68,9 @@ func (d *v1BansDeps) list(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	if list == nil {
+		list = []*bans.Ban{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"bans": list})
 }
 

@@ -91,9 +91,20 @@ func (d *v1ReportsDeps) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"reports":         reps,
+		"reports":          reportsOrEmpty(reps),
 		"reports_per_user": perUser,
 	})
+}
+
+// reportsOrEmpty returns the slice or an empty slice so the JSON
+// response is `[]` rather than `null` when there are no reports.
+// Clients (including the React UI) call .length on the array —
+// null breaks that.
+func reportsOrEmpty(reps []*reports.Report) []*reports.Report {
+	if reps == nil {
+		return []*reports.Report{}
+	}
+	return reps
 }
 
 func (d *v1ReportsDeps) create(w http.ResponseWriter, r *http.Request) {
