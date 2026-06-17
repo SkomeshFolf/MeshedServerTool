@@ -59,6 +59,17 @@ export interface LogLine {
   fields?: Record<string, unknown>;
 }
 
+// LogEntry is the shape returned by the cross-server /api/v1/logs
+// endpoint. It mirrors LogLine but is annotated with the originating
+// server_name so the aggregate log page can label and color lines.
+export interface LogEntry {
+  server_name: string;
+  raw: string;
+  type?: string;
+  fields?: Record<string, unknown>;
+  at: string;
+}
+
 export const serversApi = {
   list: () =>
     request<{ servers: ServerView[] }>("/api/v1/servers").then((r: { servers: ServerView[] }) => r.servers),
@@ -166,6 +177,24 @@ export interface ChatMessage {
   message: string;
   at: string;
 }
+
+// ChatEntry is the shape returned by the cross-server /api/v1/chats
+// endpoint. It's identical to ChatMessage but typed explicitly so the
+// aggregate page doesn't have to alias.
+export type ChatEntry = ChatMessage;
+
+// --- Aggregate (cross-server) views ---
+
+export const aggregateApi = {
+  logs: (tail = 200, server?: string) =>
+    request<{ entries: LogEntry[] }>(
+      `/api/v1/logs?tail=${tail}${server ? `&server=${encodeURIComponent(server)}` : ""}`,
+    ).then((r: { entries: LogEntry[] }) => r.entries),
+  chats: (limit = 200, server?: string, since?: number) =>
+    request<{ entries: ChatEntry[] }>(
+      `/api/v1/chats?limit=${limit}${server ? `&server=${encodeURIComponent(server)}` : ""}${since ? `&since=${since}` : ""}`,
+    ).then((r: { entries: ChatEntry[] }) => r.entries),
+};
 
 export const chatApi = {
   list: (serverName: string, limit = 200) =>

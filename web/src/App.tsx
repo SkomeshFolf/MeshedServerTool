@@ -3,8 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
 import {
   serversApi,
+  reportsApi,
   type ServerView,
   type LogLine,
+  type Report,
 } from "./serversApi";
 import { useWebSocket, type WSMessage } from "./useWebSocket";
 import type { Health } from "./types";
@@ -13,6 +15,9 @@ import BansPage from "./pages/Bans";
 import ChatPage from "./pages/Chat";
 import MotdPage from "./pages/Motd";
 import SettingsPage from "./pages/Settings";
+import AggregateLogsPage from "./pages/AggregateLogs";
+import AggregateChatsPage from "./pages/AggregateChats";
+import SteamCmdGuidePage from "./pages/SteamCmdGuide";
 import "./styles.css";
 
 export default function App() {
@@ -22,6 +27,10 @@ export default function App() {
   const [healthError, setHealthError] = useState<string | null>(null);
   const [servers, setServers] = useState<ServerView[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
+  // Unhandled report count for the topbar badge. We track an explicit
+  // counter rather than `reports.length` so we can increment/decrement
+  // it from WS events without re-fetching the list every time.
+  const [unhandledReports, setUnhandledReports] = useState<number>(0);
 
   // Fetch initial server list once auth is settled. After that, all
   // updates come through the WebSocket.
@@ -37,7 +46,27 @@ export default function App() {
     };
   }, [auth.authenticated]);
 
-  // WebSocket: live state updates replace the Phase 2 polling.
+  // Initial unhandled-report count for the topbar badge. We only need
+  // the count, not the full report list, so we cap the page size to 1
+  // and read the array length — but a small limit is friendlier in
+  // case the backend ignores limit and we still want a sane bound.
+  useEffect(() => {
+    if (!auth.authenticated) return;
+    let mounted = true;
+    reportsApi
+      .list({ handled: false, limit: 1 })
+      .then((d) => {
+        if (!mounted) return;
+        setUnhandledReports(Array.isArray(d.reports) ? d.reports.length : 0);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [auth.authenticated]);
+
+  // WebSocket: live state updates replace the Phase 2 polling, and
+  // report.* events drive the unhandled-report badge.
   useWebSocket({
     onEvent: (msg: WSMessage) => {
       if (msg.type === "server.state") {
@@ -49,6 +78,29 @@ export default function App() {
           next[idx] = updated;
           return next;
         });
+      } else if (msg.type === "report.new") {
+        const r = msg.data as Report;
+        // Only count it if it's actually unhandled.
+        if (r && r.handled === false) {
+          setUnhandledReports((n) => n + 1);
+        }
+      } else if (msg.type === "report.updated") {
+        const r = msg.data as Report;
+        if (!r) return;
+        setUnhandledReports((n) => {
+          if (r.handled) {
+            // became handled -> decrement, floor at 0
+            return Math.max(0, n - 1);
+          }
+          // reopened -> ensure counted
+          return n;
+        });
+      } else if (msg.type === "report.deleted") {
+        // We don't know if the deleted one was handled. The safe move
+        // is to drop the count by 1 (worst case we end up at 0 and
+        // the badge hides itself). Re-sync lazily on the next page
+        // mount if needed.
+        setUnhandledReports((n) => Math.max(0, n - 1));
       }
     },
     onConnectionChange: setWsConnected,
@@ -93,9 +145,19 @@ export default function App() {
         </h1>
         <nav>
           <Link to="/">Dashboard</Link>
-          <Link to="/reports">Reports</Link>
+          <Link to="/reports">
+            Reports
+            {unhandledReports > 0 && (
+              <span className="pill pill-warn" style={{ marginLeft: "0.35rem" }}>
+                {unhandledReports > 99 ? "99+" : unhandledReports}
+              </span>
+            )}
+          </Link>
+          <Link to="/logs">Logs</Link>
+          <Link to="/chat">Chat</Link>
           <Link to="/bans">Bans</Link>
           <Link to="/motd">MOTD</Link>
+          <Link to="/steamcmd-guide">Help</Link>
           <Link to="/servers/new">Add server</Link>
         </nav>
         <div className="user">
@@ -133,6 +195,9 @@ function OutletWrapper({ servers }: { servers: ServerView[] }) {
   if (path === "/reports") return <ReportsPage />;
   if (path === "/bans") return <BansPage />;
   if (path === "/motd") return <MotdPage />;
+  if (path === "/logs") return <AggregateLogsPage />;
+  if (path === "/chat") return <AggregateChatsPage />;
+  if (path === "/steamcmd-guide") return <SteamCmdGuidePage />;
   const settingsMatch = /^\/servers\/([^/]+)\/settings$/.exec(path);
   if (settingsMatch) return <SettingsPage />;
   const chatMatch = /^\/servers\/([^/]+)\/chat$/.exec(path);

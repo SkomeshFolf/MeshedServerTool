@@ -185,6 +185,19 @@ func (m *Manager) ServerByName(name string) *Server {
 	return m.servers[name]
 }
 
+// AllServers returns a snapshot of every live *Server. Used by the
+// aggregate /api/v1/logs endpoint so it can pull last-N lines from
+// every server's buffer in one go.
+func (m *Manager) AllServers() []*Server {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]*Server, 0, len(m.servers))
+	for _, s := range m.servers {
+		out = append(out, s)
+	}
+	return out
+}
+
 // Start is a convenience for manager.servers[name].Start.
 func (m *Manager) Start(ctx context.Context, name string) error {
 	m.mu.RLock()
@@ -283,6 +296,15 @@ func (s *Server) IsRunning() bool {
 // LogBuffer returns the server's recent-log buffer. Used by the API layer.
 func (s *Server) LogBuffer() *logs.Buffer {
 	return s.logBufLazy()
+}
+
+// Config returns a copy of the server's current config. Used by the
+// cross-server aggregate API to label log entries.
+func (s *Server) Config() *storage.Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := *s.cfg
+	return &cp
 }
 
 // logBufLazy returns the server's log buffer, allocating it on first use.

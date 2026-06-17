@@ -35,6 +35,9 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 	reportsDeps := &v1ReportsDeps{store: reportsStore, hub: h}
 	bansDeps := &v1BansDeps{store: bansStore, hub: h}
 	chatDeps := &v1ChatDeps{store: chatStore}
+	aggregateDeps := &v1AggregateDeps{manager: manager, store: store}
+	logsHandler := http.HandlerFunc(aggregateDeps.handleAggregateLogs)
+	chatsHandler := http.HandlerFunc(aggregateDeps.handleAggregateChats)
 	wsDeps := &v1WebSocketDeps{hub: h}
 	motdDeps := &v1MotdDeps{store: motdStore}
 	settingsDeps := &v1SettingsDeps{store: store, manager: manager, bans: bansStore}
@@ -125,6 +128,16 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 	// /api/v1/chat — per-server chat history.
 	mux.Handle("/api/v1/chat/",
 		authSvc.Middleware(http.StripPrefix("/api/v1/chat", chatDeps)))
+
+	// /api/v1/logs, /api/v1/chats — cross-server aggregate views.
+	mux.Handle("/api/v1/logs/",
+		authSvc.Middleware(logsHandler))
+	mux.Handle("/api/v1/logs",
+		authSvc.Middleware(logsHandler))
+	mux.Handle("/api/v1/chats/",
+		authSvc.Middleware(chatsHandler))
+	mux.Handle("/api/v1/chats",
+		authSvc.Middleware(chatsHandler))
 
 	// /api/v1/motd — message of the day.
 	mux.Handle("/api/v1/motd/",
