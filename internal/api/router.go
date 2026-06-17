@@ -1,7 +1,4 @@
 // Package api wires HTTP routes for the MeshedServerTool v3 backend.
-//
-// Phase 0: just a health endpoint and a static-file fallback for the embedded
-// React build. Phase 1+ adds /api/v1/auth, /api/v1/servers, etc.
 package api
 
 import (
@@ -10,19 +7,12 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Skomesh/MeshedServerTool/internal/auth"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 	"github.com/Skomesh/MeshedServerTool/web"
 )
 
-// staticSubFS exposes the web package's embed.FS to the api package.
-// Defined here as a thin wrapper so the api package can stay clean of
-// the embed directive itself.
-func staticSubFS() (fs.FS, error) {
-	return web.DistFS()
-}
-
-// NewRouter constructs the HTTP handler. The dataDir is used to locate
-// static assets once they're embedded (see web/embed.go).
+// NewRouter constructs the HTTP handler.
 func NewRouter(store *storage.Store, dataDir string) http.Handler {
 	mux := http.NewServeMux()
 
@@ -32,13 +22,40 @@ func NewRouter(store *storage.Store, dataDir string) http.Handler {
 		_, _ = w.Write([]byte(`{"status":"ok","version":"v3-dev"}`))
 	})
 
-	// API root placeholder. Phase 1+ mounts /api/v1/... subroutes here.
+	// Mount /api/v1 subrouter
+	authSvc := auth.NewService(store)
+	deps := &v1AuthDeps{svc: authSvc, store: store}
+	mux.Handle("/api/v1/auth/", http.StripPrefix("/api/v1/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// /api/v1/auth/  →  /
+		route := strings.TrimPrefix(r.URL.Path, "/")
+		// Auth middleware applies to /me only; everything else is public
+		// so the login page works before the user has a session.
+		if route == "me" {
+			authSvc.Middleware(http.HandlerFunc(deps.handleMe)).ServeHTTP(w, r)
+			return
+		}
+		switch route {
+		case "login":
+			deps.handleLogin(w, r)
+		case "logout":
+			deps.handleLogout(w, r)
+		case "bootstrap":
+			deps.handleBootstrap(w, r)
+		case "status":
+			deps.handleStatus(w, r)
+		default:
+			http.Error(w, "not found: "+r.URL.Path, http.StatusNotFound)
+		}
+	})))
+
+	// Catch-all for unmounted /api/* — keep the 501 contract from Phase 0
+	// so it's obvious which routes are not yet implemented.
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not implemented: "+r.URL.Path, http.StatusNotImplemented)
 	})
 
 	// Static assets (React build) — see web/embed.go.
-	staticFS, err := staticSubFS()
+	staticFS, err := web.DistFS()
 	if err != nil {
 		log.Printf("warning: static assets not embedded yet: %v", err)
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +76,6 @@ type spaHandler struct {
 }
 
 func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Only handle non-API routes (router mux already claimed /healthz and /api/)
 	path := strings.TrimPrefix(r.URL.Path, "/")
 	if path == "" {
 		path = "index.html"
@@ -75,7 +91,6 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
-	// Set content type for common extensions
 	stat, _ := f.Stat()
 	if stat != nil && !stat.IsDir() {
 		switch {

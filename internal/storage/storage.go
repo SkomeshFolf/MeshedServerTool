@@ -1,14 +1,17 @@
 // Package storage wraps the SQLite database layer.
 //
-// In Phase 0 this is a thin pass-through that owns the *sql.DB handle.
-// Phase 1 will add real schema and query methods. Returning a real
-// *sql.DB-backed Store from Open keeps the wiring honest from day one
-// so we don't refactor the call site later.
+// The schema is built up over multiple phases via versioned migrations:
+//   - Phase 0: schema_version
+//   - Phase 1: users, sessions
+//   - Phase 2+: servers, server_state, reports, bans, motd (added in later phases)
 package storage
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver, no CGo
 )
@@ -18,15 +21,20 @@ type Store struct {
 	db *sql.DB
 }
 
-// Open opens (or creates) the SQLite database at path and runs migrations.
-//
-// Migrations are no-ops until Phase 1; this just verifies the driver works.
+// Open opens (or creates) the SQLite database at path and runs all
+// pending migrations.
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
+	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	if err := db.Ping(); err != nil {
+	// SQLite is fine with many readers + one writer; cap connections
+	// to be safe across all platforms.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
+
+	if err := db.PingContext(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
@@ -47,19 +55,117 @@ func (s *Store) Close() error {
 }
 
 // DB returns the underlying *sql.DB. Use sparingly — prefer typed methods
-// on Store once they exist.
+// on Store.
 func (s *Store) DB() *sql.DB {
 	return s.db
 }
 
-// migrate runs all schema migrations. Idempotent.
-func (s *Store) migrate() error {
-	// Phase 0: just create a tiny version table so we can prove migrations run.
-	// Phase 1 will replace this with real schema.
-	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS schema_version (
-			version INTEGER PRIMARY KEY
-		);
-	`)
-	return err
+// migration is a single versioned schema change. Migrations run in order;
+// once applied, they never re-run.
+type migration struct {
+	version int
+	name    string
+	up      func(tx *sql.Tx) error
 }
+
+// allMigrations is the ordered list of every migration the binary knows about.
+// Append-only — never reorder or modify a released migration; add a new one.
+func allMigrations() []migration {
+	return []migration{
+		{
+			version: 1,
+			name:    "phase0-bootstrap",
+			up: func(tx *sql.Tx) error {
+				_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS schema_version (
+					version INTEGER PRIMARY KEY,
+					applied_at TEXT NOT NULL
+				);`)
+				return err
+			},
+		},
+		{
+			version: 2,
+			name:    "phase1-users-sessions",
+			up: func(tx *sql.Tx) error {
+				_, err := tx.Exec(`
+					CREATE TABLE users (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						username TEXT NOT NULL UNIQUE,
+						password_hash TEXT NOT NULL,
+						role TEXT NOT NULL DEFAULT 'user',
+						created_at TEXT NOT NULL,
+						last_login_at TEXT
+					);
+					CREATE INDEX idx_users_username ON users(username);
+
+					CREATE TABLE sessions (
+						token TEXT PRIMARY KEY,
+						user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+						created_at TEXT NOT NULL,
+						last_seen_at TEXT NOT NULL,
+						expires_at TEXT NOT NULL,
+						user_agent TEXT,
+						ip TEXT
+					);
+					CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+					CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
+				`)
+				return err
+			},
+		},
+	}
+}
+
+// migrate applies all pending migrations inside a single transaction.
+func (s *Store) migrate() error {
+	migrations := allMigrations()
+	current, err := s.currentVersion()
+	if err != nil {
+		return err
+	}
+	for _, m := range migrations {
+		if m.version <= current {
+			continue
+		}
+		if err := s.applyMigration(m); err != nil {
+			return fmt.Errorf("apply migration %d (%s): %w", m.version, m.name, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) currentVersion() (int, error) {
+	// schema_version may not exist on a brand-new DB; that's fine, version 0.
+	row := s.db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_version`)
+	var v int
+	if err := row.Scan(&v); err != nil {
+		// Table doesn't exist yet → 0
+		return 0, nil
+	}
+	return v, nil
+}
+
+func (s *Store) applyMigration(m migration) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Run the schema change first, then record that it ran. Otherwise
+	// the very first migration can't record itself in a table that
+	// doesn't exist yet.
+	if err := m.up(tx); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO schema_version (version, applied_at) VALUES (?, ?)`,
+		m.version, time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ErrNotFound is returned when a lookup matches no rows.
+var ErrNotFound = errors.New("not found")
