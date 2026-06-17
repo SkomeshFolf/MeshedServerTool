@@ -102,10 +102,10 @@ export const serversApi = {
     request<{ lines: LogLine[] }>(
       `/api/v1/servers/${encodeURIComponent(name)}/logs?tail=${n}`,
     ).then((r: { lines: LogLine[] }) => r.lines),
-  // SSE is consumed by the EventSource API directly in the page; the typed
-  // `request` helper above doesn't fit long-lived streams.
-  logsStreamURL: (name: string) =>
-    `/api/v1/servers/${encodeURIComponent(name)}/logs`,
+  // Real-time log streaming is delivered over WebSocket via the
+  // useWebSocket hook; the typed `request` helper above doesn't fit
+  // long-lived streams. There is no longer a logsStreamURL helper —
+  // the WebSocket endpoint serves the live feed.
 };
 
 // --- Reports ---

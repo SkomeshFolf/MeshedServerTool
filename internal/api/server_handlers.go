@@ -1,9 +1,7 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -11,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Skomesh/MeshedServerTool/internal/auth"
 	"github.com/Skomesh/MeshedServerTool/internal/server"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 )
@@ -273,10 +270,11 @@ func (d *v1ServerDeps) lifecycleAction(w http.ResponseWriter, r *http.Request, n
 
 // handleLogs serves /api/v1/servers/{name}/logs.
 //
-//   GET ?tail=200          → JSON {lines: [...]} (most recent N)
-//   GET (no tail)          → SSE stream of new lines (Phase 3 will replace
-//                            this with WebSocket; SSE is fine for now and
-//                            works through every HTTP proxy).
+//	GET ?tail=200   → JSON {lines: [...]} (most recent N, default 200, max 5000)
+//
+// Real-time log streaming is delivered over WebSocket (see
+// internal/api/websocket_handlers.go); the React useWebSocket hook is the
+// single subscription path on the frontend.
 func (d *v1ServerDeps) handleLogs(w http.ResponseWriter, r *http.Request, name string) {
 	view := d.manager.Get(name)
 	if view == nil {
@@ -297,70 +295,17 @@ func (d *v1ServerDeps) handleLogs(w http.ResponseWriter, r *http.Request, name s
 	}
 	buf := srv.LogBuffer()
 
-	if tailStr := r.URL.Query().Get("tail"); tailStr != "" {
-		n, err := strconv.Atoi(tailStr)
-		if err != nil || n < 0 {
-			writeJSONError(w, http.StatusBadRequest, "tail must be a non-negative integer")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"lines": buf.Snapshot(n)})
+	tailStr := r.URL.Query().Get("tail")
+	if tailStr == "" {
+		tailStr = "200"
+	}
+	n, err := strconv.Atoi(tailStr)
+	if err != nil || n < 0 {
+		writeJSONError(w, http.StatusBadRequest, "tail must be a non-negative integer")
 		return
 	}
-
-	// SSE stream of new lines. Auth must be re-checked here because the
-	// middleware protects the parent route; SSE long-connections are fine
-	// because Go's http.Server runs the handler in its own goroutine.
-	user := auth.UserFromContext(r.Context())
-	if user == nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
+	if n > 5000 {
+		n = 5000
 	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no") // disable proxy buffering
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-
-	sub := buf.Subscribe()
-	defer buf.Unsubscribe(sub)
-
-	// Send the last few lines on connect so the client doesn't have an
-	// empty UI for the first few seconds.
-	for _, line := range buf.Snapshot(50) {
-		writeSSE(w, "line", line)
-	}
-	flusher.Flush()
-
-	ctx := r.Context()
-	keepalive := time.NewTicker(15 * time.Second)
-	defer keepalive.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case line, ok := <-sub:
-			if !ok {
-				return
-			}
-			writeSSE(w, "line", line)
-			flusher.Flush()
-		case <-keepalive.C:
-			fmt.Fprintf(w, ": keepalive\n\n")
-			flusher.Flush()
-		}
-	}
-}
-
-func writeSSE(w http.ResponseWriter, event string, data any) {
-	b, err := json.Marshal(data)
-	if err != nil {
-		return
-	}
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b)
+	writeJSON(w, http.StatusOK, map[string]any{"lines": buf.Snapshot(n)})
 }
