@@ -64,6 +64,30 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+// OpenFromDSN opens a SQLite database using a fully-formed DSN string,
+// including any pragmas. Use this when the default Open() — which
+// appends a hard-coded pragma set and chmod-s the file — doesn't fit
+// (e.g. an in-memory test DB). Production code should prefer Open().
+func OpenFromDSN(dsn string) (*Store, error) {
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
+	if err := db.PingContext(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping sqlite: %w", err)
+	}
+	s := &Store{db: db}
+	if err := s.migrate(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return s, nil
+}
+
 // Close releases the database handle.
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
