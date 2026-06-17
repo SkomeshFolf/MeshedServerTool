@@ -52,6 +52,53 @@ func (us *UserStore) CountUsers(ctx context.Context) (int, error) {
 	return n, err
 }
 
+// CreateFirstUserTx creates the very first user inside a transaction so
+// that two concurrent bootstrap calls can't both succeed. Returns
+// ErrNoUsers if any user already exists (or if a concurrent bootstrap
+// already created one inside the same transaction).
+func (us *UserStore) CreateFirstUserTx(ctx context.Context, username, passwordHash string, role Role) (*User, error) {
+	tx, err := us.s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Re-check inside the transaction. With SetMaxOpenConns(1) writers are
+	// serialized, so this is correct: the second concurrent call will block
+	// on BeginTx and then see the inserted row.
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n > 0 {
+		return nil, ErrNoUsers
+	}
+
+	now := time.Now().UTC()
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)`,
+		username, passwordHash, string(role), now.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &User{
+		ID: id, Username: username, PasswordHash: passwordHash, Role: role,
+		CreatedAt: now,
+	}, nil
+}
+
+// ErrNoUsers signals a bootstrap attempt that found at least one user.
+// Used by storage.UserStore.CreateFirstUserTx and auth.Service.CreateFirstUser.
+var ErrNoUsers = errors.New("bootstrap not available")
+
 // CreateUser inserts a new user. Username must be unique (enforced by DB).
 func (us *UserStore) CreateUser(ctx context.Context, username, passwordHash string, role Role) (*User, error) {
 	now := time.Now().UTC()

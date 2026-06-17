@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -137,7 +136,7 @@ func (d *v1SettingsDeps) writeINI(w http.ResponseWriter, r *http.Request, server
 	var body settings.File
 	body.Path = filepath.Join(installDir, relPath)
 	body.RelPath = relPath
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

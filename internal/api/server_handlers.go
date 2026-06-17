@@ -104,7 +104,7 @@ func (d *v1ServerDeps) createServer(w http.ResponseWriter, r *http.Request) {
 		Args       map[string]any `json:"args"`
 		Autostart  bool           `json:"autostart"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -168,7 +168,7 @@ func (d *v1ServerDeps) updateServer(w http.ResponseWriter, r *http.Request, name
 		Args       map[string]any  `json:"args"`
 		Autostart  *bool           `json:"autostart"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -195,6 +195,21 @@ func (d *v1ServerDeps) updateServer(w http.ResponseWriter, r *http.Request, name
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Refetch the canonical config from the DB and push it into the
+	// manager's in-memory cache. Without this, the manager's *Server.cfg
+	// still points at the old struct, so the next Start() spawns the old
+	// binary from the old install dir. (audit finding #1)
+	updated, err := d.store.Servers().GetServer(r.Context(), name)
+	if err != nil {
+		log.Printf("refetch server: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err := d.manager.UpdateConfig(name, updated); err != nil {
+		log.Printf("manager update config: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	writeJSON(w, http.StatusOK, d.manager.Get(name))
 }
 
@@ -203,9 +218,11 @@ func (d *v1ServerDeps) deleteServer(w http.ResponseWriter, r *http.Request, name
 		writeJSONError(w, http.StatusNotFound, "server not found")
 		return
 	}
-	if err := d.manager.RemoveServer(name); err != nil {
-		log.Printf("remove from manager: %v", err)
-	}
+	// Delete from the DB first; only remove from the in-memory map on
+	// success. The reverse order would leave the manager without a
+	// server while the DB row still exists — a crash between the two
+	// steps would re-add the server on next startup with stale state.
+	// (audit finding #3)
 	if err := d.store.Servers().DeleteServer(r.Context(), name); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			writeJSONError(w, http.StatusNotFound, "server not found")
@@ -215,7 +232,10 @@ func (d *v1ServerDeps) deleteServer(w http.ResponseWriter, r *http.Request, name
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	if err := d.manager.RemoveServer(name); err != nil {
+		log.Printf("remove from manager: %v", err)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (d *v1ServerDeps) lifecycleAction(w http.ResponseWriter, r *http.Request, name, action string) {
@@ -241,8 +261,11 @@ func (d *v1ServerDeps) lifecycleAction(w http.ResponseWriter, r *http.Request, n
 			writeJSONError(w, http.StatusConflict, err.Error())
 			return
 		}
+		// Log the full error (which may include install paths and
+		// binary names from fork/exec failures) but return a generic
+		// message to the user. (audit finding #7)
 		log.Printf("%s %s: %v", action, name, err)
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		writeJSONError(w, http.StatusInternalServerError, "lifecycle action failed; see server logs")
 		return
 	}
 	writeJSON(w, http.StatusOK, d.manager.Get(name))

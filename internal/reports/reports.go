@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
@@ -54,7 +55,12 @@ func New(s *storage.Store) *Store { return &Store{s: s} }
 // v2 used MD5 — we keep it for compatibility with the de-dup logic
 // the existing UI/scripts may rely on. (Not a security boundary.)
 func Hash(target, targetID, source, sourceID, date, reason, text string) string {
-	h := md5.Sum([]byte(fmt.Sprintf("%s%s%s%s%s%s%s", target, targetID, source, sourceID, date, reason, text)))
+	// Hash de-dupes identical reports. Use NUL separators between fields
+	// so a field boundary can never be ambiguous (e.g. ("a","bc",...) and
+	// ("ab","c",...) used to produce the same hash).
+	h := md5.Sum([]byte(strings.Join([]string{
+		target, targetID, source, sourceID, date, reason, text,
+	}, "\x00")))
 	return hex.EncodeToString(h[:])
 }
 

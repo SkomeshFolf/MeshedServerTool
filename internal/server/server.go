@@ -7,10 +7,13 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -78,6 +81,20 @@ func NewManager(store *storage.Store, h *hub.Hub, c *chat.Store) (*Manager, erro
 			cfg:   srv,
 			state: state,
 		}
+		// Honor the autostart flag from the DB. (audit finding #10)
+		// We start with context.Background() — autostart runs at process
+		// boot before any request context exists, and we don't want a
+		// cancelled request to abort a server start.
+		if srv.Autostart {
+			asrv := m.servers[srv.Name]
+			if asrv.cfg.Args != nil {
+				if _, ok := asrv.cfg.Args["executable"].(string); ok {
+					if err := asrv.Start(context.Background()); err != nil {
+						log.Printf("autostart %s: %v", srv.Name, err)
+					}
+				}
+			}
+		}
 	}
 	return m, nil
 }
@@ -100,6 +117,25 @@ func (m *Manager) AddServer(srv *storage.Server) {
 		cfg:   srv,
 		state: state,
 	}
+}
+
+// UpdateConfig replaces the in-memory config for a server with the
+// supplied one. The DB must already have been updated by the caller.
+// Returns storage.ErrNotFound if no server with that name is registered.
+//
+// Without this, PATCH /api/v1/servers/{name} writes the new fields to
+// the DB but the in-memory *Server.cfg still points at the old struct,
+// so the next Start() spawns the old binary from the old install dir.
+// The user sees the change on GET but it doesn't take effect.
+func (m *Manager) UpdateConfig(name string, cfg *storage.Server) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	srv, ok := m.servers[name]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	srv.cfg = cfg
+	return nil
 }
 
 // RemoveServer stops (if running) and removes a server from the manager.
@@ -169,6 +205,27 @@ func (m *Manager) Stop(ctx context.Context, name string, grace time.Duration) er
 		return storage.ErrNotFound
 	}
 	return srv.Stop(ctx, grace)
+}
+
+// StopAll iterates over all servers and stops each one with the given
+// grace period. Returns the first error encountered (but tries to
+// stop every server). Used by the graceful-shutdown path in main.go so
+// that `kill meshed` doesn't orphan running game-server children.
+// (audit finding #14)
+func (m *Manager) StopAll(ctx context.Context, grace time.Duration) error {
+	m.mu.RLock()
+	names := make([]string, 0, len(m.servers))
+	for n := range m.servers {
+		names = append(names, n)
+	}
+	m.mu.RUnlock()
+	var firstErr error
+	for _, n := range names {
+		if err := m.Stop(ctx, n, grace); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // Restart stops (if running) and starts the server.
@@ -449,28 +506,23 @@ func (s *Server) buildCommand() (string, []string) {
 }
 
 // pumpPipe copies lines from r into buf with a stream tag.
+//
+// Uses bufio.Scanner with a 1 MiB max token size. A line longer than
+// that (e.g. a buggy game binary that prints no newlines) is dropped
+// and logged rather than allocating unbounded memory. Without this
+// cap, a misbehaving subprocess can OOM the manager.
 func pumpPipe(r interface{ Read(p []byte) (int, error) }, buf *logs.Buffer, stream string) {
-	// Read one byte at a time; cheap, correct, and avoids an extra import.
-	// For high-volume servers this would want a bufio.Scanner.
-	var line []byte
-	one := make([]byte, 1)
-	for {
-		n, err := r.Read(one)
-		if n > 0 {
-			if one[0] == '\n' {
-				if len(line) > 0 {
-					buf.Append(logs.Line{Stream: stream, Text: string(line)})
-					line = line[:0]
-				}
-			} else if one[0] != '\r' {
-				line = append(line, one[0])
-			}
-		}
-		if err != nil {
-			if len(line) > 0 {
-				buf.Append(logs.Line{Stream: stream, Text: string(line)})
-			}
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20) // 64 KiB start, 1 MiB max
+	for scanner.Scan() {
+		buf.Append(logs.Line{Stream: stream, Text: scanner.Text()})
+	}
+	if err := scanner.Err(); err != nil {
+		// Normal close (process exit, manager Stop, etc) — don't log.
+		// This is the expected case during graceful shutdown.
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, os.ErrClosed) {
 			return
 		}
+		log.Printf("pumpPipe %s: %v", stream, err)
 	}
 }

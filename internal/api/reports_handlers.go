@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -118,7 +117,7 @@ func (d *v1ReportsDeps) create(w http.ResponseWriter, r *http.Request) {
 		Reason     string `json:"reason"`
 		Text       string `json:"text"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -167,7 +166,7 @@ func (d *v1ReportsDeps) update(w http.ResponseWriter, r *http.Request, id int64)
 	var body struct {
 		Handled *bool `json:"handled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

@@ -44,7 +44,7 @@ func main() {
 	if *dataDir == "" {
 		*dataDir = config.DefaultDataDir()
 	}
-	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(*dataDir, 0o700); err != nil {
 		log.Fatalf("create data dir: %v", err)
 	}
 	log.Printf("data dir: %s", *dataDir)
@@ -95,9 +95,18 @@ func main() {
 	if *tlsCert != "" && *tlsKey != "" {
 		// Manual cert mode — ListenAndServeTLS reads the files.
 	} else if *autocertDomain != "" {
-		cacheDir := *autocertCache
-		if cacheDir == "" {
+		var cacheDir string
+		if *autocertCache != "" {
+			cacheDir = *autocertCache
+		} else {
 			cacheDir = filepath.Join(*dataDir, "autocert")
+		}
+		// Pre-create the cache dir with safe perms. autocert.DirCache
+		// does MkdirAll itself, but the resulting dir inherits the
+		// process umask which on Linux is typically 022 (world-readable).
+		// The cache contains certs + private keys.
+		if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+			log.Fatalf("create autocert cache: %v", err)
 		}
 		m := &autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
@@ -130,8 +139,45 @@ func main() {
 		}
 	}()
 
-	// Wait for signal or fatal server error
+	// Signal channel for graceful shutdown of all background goroutines.
 	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// Periodic cleanup job. Without this, the sessions and chat_messages
+	// tables grow without bound (audit finding C1).
+	cleanupDone := make(chan struct{})
+	go func() {
+		defer close(cleanupDone)
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		purge := func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if n, err := store.Sessions().PurgeExpired(ctx); err != nil {
+				log.Printf("purge expired sessions: %v", err)
+			} else if n > 0 {
+				log.Printf("purge expired sessions: %d rows", n)
+			}
+			if n, err := chatStore.PurgeOlderThan(ctx, 30*24*time.Hour); err != nil {
+				log.Printf("purge old chat: %v", err)
+			} else if n > 0 {
+				log.Printf("purge old chat: %d rows", n)
+			}
+		}
+		purge() // run once on startup
+		for {
+			select {
+			case <-ticker.C:
+				purge()
+			case <-stop:
+				return
+			case <-serverErr:
+				return
+			}
+		}
+	}()
+
+	// Wait for signal or fatal server error
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	select {
@@ -144,8 +190,14 @@ func main() {
 	}
 
 	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	// Stop child game-server processes BEFORE we stop the HTTP server.
+	// Otherwise `systemctl stop meshed` orphans the game servers.
+	// (audit finding #14)
+	if err := manager.StopAll(ctx, 5*time.Second); err != nil {
+		log.Printf("manager stop all: %v", err)
+	}
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}

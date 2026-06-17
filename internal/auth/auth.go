@@ -123,19 +123,26 @@ func (s *Service) Resolve(ctx context.Context, token string) (*storage.User, err
 
 // CreateFirstUser creates the very first user, gated on the users table being
 // empty. Returns ErrNoUsers if any user already exists.
+//
+// Uses CreateFirstUserTx so two concurrent bootstrap calls can't both
+// succeed: with SetMaxOpenConns(1) the second BeginTx blocks until the
+// first commits, then the inner SELECT COUNT sees the inserted row.
 func (s *Service) CreateFirstUser(ctx context.Context, username, password string) (*storage.User, error) {
-	count, err := s.store.Users().CountUsers(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if count > 0 {
-		return nil, ErrNoUsers
-	}
 	hash, err := HashPassword(password)
 	if err != nil {
 		return nil, err
 	}
-	return s.store.Users().CreateUser(ctx, username, hash, storage.RoleAdmin)
+	user, err := s.store.Users().CreateFirstUserTx(ctx, username, hash, storage.RoleAdmin)
+	if err != nil {
+		// Translate storage.ErrNoUsers to auth.ErrNoUsers so the API
+		// handler can map it to a 403. The handler checks for
+		// auth.ErrNoUsers specifically.
+		if errors.Is(err, storage.ErrNoUsers) {
+			return nil, ErrNoUsers
+		}
+		return nil, err
+	}
+	return user, nil
 }
 
 // SetSessionCookie writes the session token as a cookie on the response.

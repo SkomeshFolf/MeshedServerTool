@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -81,7 +80,7 @@ func (d *v1BansDeps) add(w http.ResponseWriter, r *http.Request) {
 		Reason     string `json:"reason"`
 		BannedBy   string `json:"banned_by"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

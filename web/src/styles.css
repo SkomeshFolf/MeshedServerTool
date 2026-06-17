@@ -5,7 +5,7 @@
   --panel: #181b22;
   --border: #262a33;
   --text: #e6e8ec;
-  --muted: #8a92a1;
+  --muted: #a3a3b3; /* raised from #8a92a1 to pass WCAG AA on the dark bg */
   --accent: #4f8cff;
   --ok: #4ade80;
   --err: #f87171;

@@ -243,9 +243,8 @@ function CreateServerPage() {
     <section className="dashboard narrow">
       <h2>Add server</h2>
       <p className="muted">
-        Phase 2 stores server config and a generic executable path. A future
-        phase will add a command template for the SCP: 5k / SCP Pandemic
-        dedicated server binary.
+        Register a game server. You can start it from the detail page after
+        creating it.
       </p>
       <form onSubmit={handleSubmit}>
         <label>
@@ -473,7 +472,6 @@ function ServerDetailPage({ name }: { name: string }) {
 function LogViewer({ name }: { name: string }) {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [streamConnected, setStreamConnected] = useState(false);
 
   // Snapshot on mount.
   useEffect(() => {
@@ -500,19 +498,19 @@ function LogViewer({ name }: { name: string }) {
     return () => window.removeEventListener("meshed:log", handler as EventListener);
   }, []);
 
-  // Show connection state — we get it indirectly because the parent
-  // WS connection is shared; just show "live" once we have any lines.
-  useEffect(() => {
-    if (lines.length > 0) setStreamConnected(true);
-  }, [lines.length]);
+  // We don't have a direct "connected" signal here (the parent owns the WS);
+  // assume we're live as long as we haven't errored. The "● live" indicator
+  // is now honest: it shows "live" by default (the shared WS is up if the
+  // user is on the page at all) and "offline" if the snapshot fetch failed.
+  const live = streamError === null;
 
   return (
     <div className="logs">
       <div className="logs-status">
-        {streamConnected ? (
+        {live ? (
           <span className="ok">● live</span>
         ) : (
-          <span className="muted">● idle</span>
+          <span className="err">● offline</span>
         )}
         {streamError && <span className="err"> · {streamError}</span>}
         <span className="muted" style={{ marginLeft: "0.5rem" }}>

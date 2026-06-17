@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver, no CGo
@@ -21,9 +22,20 @@ type Store struct {
 	db *sql.DB
 }
 
-// Open opens (or creates) the SQLite database at path and runs all
-// pending migrations.
+// Open opens (or creates) the SQLite database at path. The parent
+// directory must already exist with safe permissions; see
+// cmd/meshed/main.go where we MkdirAll(... 0o700) before calling.
+//
+// We chmod the DB file after the driver creates it because modernc.org/sqlite
+// does not expose a way to set the mode on creation. The DSN applies the
+// usual journal_mode(WAL) + foreign_keys(1) + busy_timeout(5000) pragmas.
 func Open(path string) (*Store, error) {
+	// Make sure the file exists with a safe mode before opening. If it
+	// already exists from a previous install (e.g. one created before
+	// this hardening pass), chmod it now to 0o600.
+	if _, err := os.Stat(path); err == nil {
+		_ = os.Chmod(path, 0o600)
+	}
 	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -38,6 +50,12 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
+	// Belt-and-suspenders: even if the file was created in this call
+	// (fresh install), make sure it's 0o600. SQLite may also have created
+	// -wal and -shm sidecars; chmod them too.
+	_ = os.Chmod(path, 0o600)
+	_ = os.Chmod(path+"-wal", 0o600)
+	_ = os.Chmod(path+"-shm", 0o600)
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
