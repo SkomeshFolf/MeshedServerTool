@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/api.ts","./src/auth.tsx","./src/main.tsx","./src/serversApi.ts","./src/types.ts","./src/useWebSocket.ts","./src/pages/Dashboard.tsx","./src/pages/Login.tsx"],"version":"5.9.3"}
+{"root":["./src/App.tsx","./src/api.ts","./src/auth.tsx","./src/main.tsx","./src/serversApi.ts","./src/types.ts","./src/useWebSocket.ts","./src/pages/Bans.tsx","./src/pages/Chat.tsx","./src/pages/Dashboard.tsx","./src/pages/Login.tsx","./src/pages/Reports.tsx"],"version":"5.9.3"}

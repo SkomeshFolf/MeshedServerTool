@@ -96,3 +96,79 @@ export const serversApi = {
   logsStreamURL: (name: string) =>
     `/api/v1/servers/${encodeURIComponent(name)}/logs`,
 };
+
+// --- Reports ---
+
+export interface Report {
+  id: number;
+  server_name: string;
+  target_id: string;
+  target_name: string;
+  source_id: string;
+  source_name: string;
+  date: string;
+  reason: string;
+  text: string;
+  hash: string;
+  handled: boolean;
+  handled_at?: string;
+  created_at: string;
+}
+
+export const reportsApi = {
+  list: (params?: { handled?: boolean; server?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.handled !== undefined) q.set("handled", String(params.handled));
+    if (params?.server) q.set("server", params.server);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return request<{ reports: Report[]; reports_per_user: Record<string, number> }>(
+      `/api/v1/reports${qs ? "?" + qs : ""}`,
+    );
+  },
+  get: (id: number) => request<Report>(`/api/v1/reports/${id}`),
+  create: (body: Omit<Report, "id" | "hash" | "handled" | "handled_at" | "created_at">) =>
+    request<Report>("/api/v1/reports", { method: "POST", body: JSON.stringify(body) }),
+  markHandled: (id: number, handled: boolean) =>
+    request<Report>(`/api/v1/reports/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ handled }),
+    }),
+  delete: (id: number) =>
+    request<{ ok: boolean }>(`/api/v1/reports/${id}`, { method: "DELETE" }),
+};
+
+// --- Bans ---
+
+export interface Ban {
+  id: number;
+  steam_id: string;
+  player_name: string;
+  reason: string;
+  banned_by: string;
+  banned_at: string;
+}
+
+export const bansApi = {
+  list: () => request<{ bans: Ban[] }>("/api/v1/bans").then((r: { bans: Ban[] }) => r.bans),
+  add: (body: { steam_id: string; player_name?: string; reason?: string }) =>
+    request<Ban>("/api/v1/bans", { method: "POST", body: JSON.stringify(body) }),
+  remove: (id: number) =>
+    request<{ ok: boolean }>(`/api/v1/bans/${id}`, { method: "DELETE" }),
+};
+
+// --- Chat ---
+
+export interface ChatMessage {
+  id: number;
+  server_name: string;
+  player_name: string;
+  message: string;
+  at: string;
+}
+
+export const chatApi = {
+  list: (serverName: string, limit = 200) =>
+    request<{ messages: ChatMessage[] }>(`/api/v1/chat/${encodeURIComponent(serverName)}?limit=${limit}`)
+      .then((r: { messages: ChatMessage[] }) => r.messages),
+};

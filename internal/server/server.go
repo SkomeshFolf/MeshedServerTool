@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Skomesh/MeshedServerTool/internal/chat"
 	"github.com/Skomesh/MeshedServerTool/internal/hub"
 	"github.com/Skomesh/MeshedServerTool/internal/logs"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
@@ -33,9 +34,10 @@ var ErrInvalidTransition = errors.New("invalid state transition")
 
 // Manager coordinates all managed servers.
 type Manager struct {
-	store  *storage.Store
-	hub    *hub.Hub
-	mu     sync.RWMutex
+	store   *storage.Store
+	hub     *hub.Hub
+	chat    *chat.Store
+	mu      sync.RWMutex
 	servers map[string]*Server
 }
 
@@ -44,10 +46,11 @@ type Manager struct {
 // "crashed" at startup — we can't know if the original process is still
 // alive, and we'd rather the user re-start explicitly than think a server
 // is running when it isn't.
-func NewManager(store *storage.Store, h *hub.Hub) (*Manager, error) {
+func NewManager(store *storage.Store, h *hub.Hub, c *chat.Store) (*Manager, error) {
 	m := &Manager{
 		store:   store,
 		hub:     h,
+		chat:    c,
 		servers: make(map[string]*Server),
 	}
 	servers, err := store.Servers().ListServers(context.Background())
@@ -71,6 +74,7 @@ func NewManager(store *storage.Store, h *hub.Hub) (*Manager, error) {
 		m.servers[srv.Name] = &Server{
 			store: store,
 			hub:   h,
+			chat:  c,
 			cfg:   srv,
 			state: state,
 		}
@@ -92,6 +96,7 @@ func (m *Manager) AddServer(srv *storage.Server) {
 	m.servers[srv.Name] = &Server{
 		store: m.store,
 		hub:   m.hub,
+		chat:  m.chat,
 		cfg:   srv,
 		state: state,
 	}
@@ -186,6 +191,7 @@ func (m *Manager) Restart(ctx context.Context, name string) error {
 type Server struct {
 	store *storage.Store
 	hub   *hub.Hub
+	chat  *chat.Store
 	cfg   *storage.Server
 	state *storage.ServerState
 	mu    sync.Mutex
@@ -228,6 +234,9 @@ func (s *Server) LogBuffer() *logs.Buffer {
 // The buffer is also wired into the hub on first allocation: every new
 // line is published as a hub.Event with type "log.line". Subscribers
 // (WebSocket clients) receive the line in real time.
+//
+// If a chat.Store is configured, chat-typed lines are also persisted
+// to the chat_messages table.
 func (s *Server) logBufLazy() *logs.Buffer {
 	s.logBufOnce.Do(func() {
 		s.logBuf = logs.NewBuffer(500) // last 500 lines
@@ -240,6 +249,14 @@ func (s *Server) logBufLazy() *logs.Buffer {
 						"line":        l,
 					},
 				})
+				// Persist chat lines for the chat history view.
+				if s.chat != nil && (l.Type == "chat" || l.Type == "chat_simple") {
+					if name, _ := l.Fields["name"].(string); name != "" {
+						if msg, _ := l.Fields["message"].(string); msg != "" {
+							_ = s.chat.Add(context.Background(), s.cfg.Name, name, msg)
+						}
+					}
+				}
 			})
 		}
 	})

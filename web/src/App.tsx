@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
-import { serversApi, type ServerView, type LogLine } from "./serversApi";
+import {
+  serversApi,
+  type ServerView,
+  type LogLine,
+} from "./serversApi";
 import { useWebSocket, type WSMessage } from "./useWebSocket";
 import type { Health } from "./types";
+import ReportsPage from "./pages/Reports";
+import BansPage from "./pages/Bans";
+import ChatPage from "./pages/Chat";
 import "./styles.css";
 
 export default function App() {
@@ -84,6 +91,8 @@ export default function App() {
         </h1>
         <nav>
           <Link to="/">Dashboard</Link>
+          <Link to="/reports">Reports</Link>
+          <Link to="/bans">Bans</Link>
           <Link to="/servers/new">Add server</Link>
         </nav>
         <div className="user">
@@ -118,6 +127,10 @@ export default function App() {
 function OutletWrapper({ servers }: { servers: ServerView[] }) {
   const path = window.location.pathname;
   if (path === "/servers/new") return <CreateServerPage />;
+  if (path === "/reports") return <ReportsPage />;
+  if (path === "/bans") return <BansPage />;
+  const chatMatch = /^\/servers\/([^/]+)\/chat$/.exec(path);
+  if (chatMatch) return <ChatPage />;
   const detailMatch = /^\/servers\/([^/]+)$/.exec(path);
   if (detailMatch) return <ServerDetailPage name={detailMatch[1]} />;
   return <DashboardPage servers={servers} />;
@@ -437,6 +450,10 @@ function ServerDetailPage({ name }: { name: string }) {
 
       <h3>Logs</h3>
       <LogViewer name={name} />
+
+      <p style={{ marginTop: "1rem" }}>
+        <Link to={`/servers/${encodeURIComponent(name)}/chat`}>→ Open chat history</Link>
+      </p>
 
       <p style={{ marginTop: "2rem" }}>
         <Link to="/">← Back to dashboard</Link>

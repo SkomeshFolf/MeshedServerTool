@@ -146,6 +146,52 @@ func allMigrations() []migration {
 				return err
 			},
 		},
+		{
+			version: 4,
+			name:    "phase4-reports-bans-chat",
+			up: func(tx *sql.Tx) error {
+				_, err := tx.Exec(`
+					CREATE TABLE reports (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						server_name TEXT NOT NULL,
+						target_id TEXT NOT NULL,
+						target_name TEXT NOT NULL,
+						source_id TEXT NOT NULL,
+						source_name TEXT NOT NULL,
+						date TEXT NOT NULL,
+						reason TEXT NOT NULL DEFAULT '',
+						text TEXT NOT NULL DEFAULT '',
+						hash TEXT NOT NULL UNIQUE,
+						handled INTEGER NOT NULL DEFAULT 0,
+						handled_at TEXT,
+						created_at TEXT NOT NULL
+					);
+					CREATE INDEX idx_reports_handled ON reports(handled);
+					CREATE INDEX idx_reports_server ON reports(server_name);
+					CREATE INDEX idx_reports_target ON reports(target_id);
+
+					CREATE TABLE bans (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						steam_id TEXT NOT NULL UNIQUE,
+						player_name TEXT NOT NULL DEFAULT '',
+						reason TEXT NOT NULL DEFAULT '',
+						banned_by TEXT NOT NULL DEFAULT '',
+						banned_at TEXT NOT NULL
+					);
+					CREATE INDEX idx_bans_steam_id ON bans(steam_id);
+
+					CREATE TABLE chat_messages (
+						id INTEGER PRIMARY KEY AUTOINCREMENT,
+						server_name TEXT NOT NULL,
+						player_name TEXT NOT NULL,
+						message TEXT NOT NULL,
+						at TEXT NOT NULL
+					);
+					CREATE INDEX idx_chat_server_at ON chat_messages(server_name, at);
+				`)
+				return err
+			},
+		},
 	}
 }
 

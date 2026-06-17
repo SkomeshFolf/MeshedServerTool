@@ -8,14 +8,17 @@ import (
 	"strings"
 
 	"github.com/Skomesh/MeshedServerTool/internal/auth"
+	"github.com/Skomesh/MeshedServerTool/internal/bans"
+	"github.com/Skomesh/MeshedServerTool/internal/chat"
 	"github.com/Skomesh/MeshedServerTool/internal/hub"
+	"github.com/Skomesh/MeshedServerTool/internal/reports"
 	"github.com/Skomesh/MeshedServerTool/internal/server"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 	"github.com/Skomesh/MeshedServerTool/web"
 )
 
 // NewRouter constructs the HTTP handler.
-func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, dataDir string) http.Handler {
+func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, reportsStore *reports.Store, bansStore *bans.Store, chatStore *chat.Store, dataDir string) http.Handler {
 	mux := http.NewServeMux()
 
 	// Health endpoint (used by orchestrators, also a quick smoke test)
@@ -28,6 +31,9 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, dataDi
 	authSvc := auth.NewService(store)
 	authDeps := &v1AuthDeps{svc: authSvc, store: store}
 	serverDeps := &v1ServerDeps{store: store, manager: manager}
+	reportsDeps := &v1ReportsDeps{store: reportsStore, hub: h}
+	bansDeps := &v1BansDeps{store: bansStore, hub: h}
+	chatDeps := &v1ChatDeps{store: chatStore}
 	wsDeps := &v1WebSocketDeps{hub: h}
 
 	mux.Handle("/api/v1/auth/", http.StripPrefix("/api/v1/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +67,22 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, dataDi
 	// /api/v1/ws — WebSocket endpoint. Auth-protected; same cookie as
 	// REST. Streams all hub events to the client.
 	mux.Handle("/api/v1/ws", authSvc.Middleware(http.HandlerFunc(wsDeps.handleWebSocket)))
+
+	// /api/v1/reports — list/create (POST), single (GET/PATCH/DELETE).
+	mux.Handle("/api/v1/reports/",
+		authSvc.Middleware(http.StripPrefix("/api/v1/reports", reportsDeps)))
+	mux.Handle("/api/v1/reports",
+		authSvc.Middleware(http.StripPrefix("/api/v1/reports", reportsDeps)))
+
+	// /api/v1/bans — global ban list CRUD.
+	mux.Handle("/api/v1/bans/",
+		authSvc.Middleware(http.StripPrefix("/api/v1/bans", bansDeps)))
+	mux.Handle("/api/v1/bans",
+		authSvc.Middleware(http.StripPrefix("/api/v1/bans", bansDeps)))
+
+	// /api/v1/chat — per-server chat history.
+	mux.Handle("/api/v1/chat/",
+		authSvc.Middleware(http.StripPrefix("/api/v1/chat", chatDeps)))
 
 	// Catch-all for unmounted /api/* — keep the 501 contract from Phase 0
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {

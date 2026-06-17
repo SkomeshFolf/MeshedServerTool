@@ -18,8 +18,11 @@ import (
 	"time"
 
 	"github.com/Skomesh/MeshedServerTool/internal/api"
+	"github.com/Skomesh/MeshedServerTool/internal/bans"
+	"github.com/Skomesh/MeshedServerTool/internal/chat"
 	"github.com/Skomesh/MeshedServerTool/internal/config"
 	"github.com/Skomesh/MeshedServerTool/internal/hub"
+	"github.com/Skomesh/MeshedServerTool/internal/reports"
 	"github.com/Skomesh/MeshedServerTool/internal/server"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 )
@@ -52,13 +55,16 @@ func main() {
 	// subscribes to the hub and pushes events to clients in real time.
 	h := hub.NewHub()
 	defer h.Close()
-	manager, err := server.NewManager(store, h)
+	chatStore := chat.New(store)
+	reportsStore := reports.New(store)
+	bansStore := bans.New(store)
+	manager, err := server.NewManager(store, h, chatStore)
 	if err != nil {
 		log.Fatalf("init server manager: %v", err)
 	}
 
 	// Build router.
-	router := api.NewRouter(store, manager, h, *dataDir)
+	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, *dataDir)
 
 	// Effective listen address
 	listen := *addr
