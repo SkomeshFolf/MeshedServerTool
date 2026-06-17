@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -17,11 +18,14 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/acme/autocert"
+
 	"github.com/Skomesh/MeshedServerTool/internal/api"
 	"github.com/Skomesh/MeshedServerTool/internal/bans"
 	"github.com/Skomesh/MeshedServerTool/internal/chat"
 	"github.com/Skomesh/MeshedServerTool/internal/config"
 	"github.com/Skomesh/MeshedServerTool/internal/hub"
+	"github.com/Skomesh/MeshedServerTool/internal/motd"
 	"github.com/Skomesh/MeshedServerTool/internal/reports"
 	"github.com/Skomesh/MeshedServerTool/internal/server"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
@@ -31,6 +35,8 @@ func main() {
 	addr := flag.String("addr", "", "listen address (overrides config; e.g. :5000 or 127.0.0.1:5000)")
 	tlsCert := flag.String("tls-cert", "", "path to TLS certificate (enables HTTPS)")
 	tlsKey := flag.String("tls-key", "", "path to TLS private key (enables HTTPS)")
+	autocertDomain := flag.String("autocert-domain", "", "domain for Let's Encrypt autocert (e.g. mesh.example.com). Requires port 80 reachable for HTTP-01 challenge.")
+	autocertCache := flag.String("autocert-cache", "", "directory for autocert cert cache (default: <data-dir>/autocert)")
 	dataDir := flag.String("data-dir", "", "override data directory (default: platform-specific user data dir)")
 	flag.Parse()
 
@@ -58,13 +64,14 @@ func main() {
 	chatStore := chat.New(store)
 	reportsStore := reports.New(store)
 	bansStore := bans.New(store)
+	motdStore := motd.New(store)
 	manager, err := server.NewManager(store, h, chatStore)
 	if err != nil {
 		log.Fatalf("init server manager: %v", err)
 	}
 
 	// Build router.
-	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, *dataDir)
+	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir)
 
 	// Effective listen address
 	listen := *addr
@@ -78,12 +85,45 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// TLS configuration. Three modes, in order of precedence:
+	//   1. -tls-cert + -tls-key  — manual certificates
+	//   2. -autocert-domain      — Let's Encrypt via golang.org/x/crypto/acme
+	//   3. (none)                — plain HTTP
+	//
+	// Autocert requires port 80 reachable for the HTTP-01 challenge,
+	// so it starts an extra server on :80 that serves only /.well-known/acme-challenge/.
+	if *tlsCert != "" && *tlsKey != "" {
+		// Manual cert mode — ListenAndServeTLS reads the files.
+	} else if *autocertDomain != "" {
+		cacheDir := *autocertCache
+		if cacheDir == "" {
+			cacheDir = filepath.Join(*dataDir, "autocert")
+		}
+		m := &autocert.Manager{
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist(*autocertDomain),
+			Cache:      autocert.DirCache(cacheDir),
+		}
+		srv.TLSConfig = &tls.Config{GetCertificate: m.GetCertificate}
+		// Serve the ACME challenge on :80 alongside the main HTTPS server.
+		go func() {
+			log.Printf("autocert: serving HTTP-01 challenge on :80")
+			if err := http.ListenAndServe(":80", m.HTTPHandler(nil)); err != nil {
+				log.Printf("autocert http-01 server: %v", err)
+			}
+		}()
+	}
+
 	// Run server in a goroutine so we can handle shutdown signals
 	serverErr := make(chan error, 1)
 	go func() {
 		if *tlsCert != "" && *tlsKey != "" {
-			log.Printf("meshed v3 listening on https://%s", listen)
+			log.Printf("meshed v3 listening on https://%s (manual cert)", listen)
 			serverErr <- srv.ListenAndServeTLS(*tlsCert, *tlsKey)
+		} else if *autocertDomain != "" {
+			log.Printf("meshed v3 listening on https://%s (Let's Encrypt via autocert)", listen)
+			// TLSConfig.GetCertificate handles cert fetching; pass empty paths.
+			serverErr <- srv.ListenAndServeTLS("", "")
 		} else {
 			log.Printf("meshed v3 listening on http://%s (TLS not enabled)", listen)
 			serverErr <- srv.ListenAndServe()

@@ -11,6 +11,8 @@ import type { Health } from "./types";
 import ReportsPage from "./pages/Reports";
 import BansPage from "./pages/Bans";
 import ChatPage from "./pages/Chat";
+import MotdPage from "./pages/Motd";
+import SettingsPage from "./pages/Settings";
 import "./styles.css";
 
 export default function App() {
@@ -93,6 +95,7 @@ export default function App() {
           <Link to="/">Dashboard</Link>
           <Link to="/reports">Reports</Link>
           <Link to="/bans">Bans</Link>
+          <Link to="/motd">MOTD</Link>
           <Link to="/servers/new">Add server</Link>
         </nav>
         <div className="user">
@@ -129,6 +132,9 @@ function OutletWrapper({ servers }: { servers: ServerView[] }) {
   if (path === "/servers/new") return <CreateServerPage />;
   if (path === "/reports") return <ReportsPage />;
   if (path === "/bans") return <BansPage />;
+  if (path === "/motd") return <MotdPage />;
+  const settingsMatch = /^\/servers\/([^/]+)\/settings$/.exec(path);
+  if (settingsMatch) return <SettingsPage />;
   const chatMatch = /^\/servers\/([^/]+)\/chat$/.exec(path);
   if (chatMatch) return <ChatPage />;
   const detailMatch = /^\/servers\/([^/]+)$/.exec(path);
@@ -453,6 +459,8 @@ function ServerDetailPage({ name }: { name: string }) {
 
       <p style={{ marginTop: "1rem" }}>
         <Link to={`/servers/${encodeURIComponent(name)}/chat`}>→ Open chat history</Link>
+        {" · "}
+        <Link to={`/servers/${encodeURIComponent(name)}/settings`}>⚙ Settings</Link>
       </p>
 
       <p style={{ marginTop: "2rem" }}>

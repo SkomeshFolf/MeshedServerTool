@@ -172,3 +172,58 @@ export const chatApi = {
     request<{ messages: ChatMessage[] }>(`/api/v1/chat/${encodeURIComponent(serverName)}?limit=${limit}`)
       .then((r: { messages: ChatMessage[] }) => r.messages),
 };
+
+// --- MOTD ---
+
+export interface MOTD {
+  server_name?: string;
+  message: string;
+  enabled: boolean;
+  updated_at: string;
+  updated_by: string;
+}
+
+export const motdApi = {
+  list: () =>
+    request<{ global: MOTD; servers: MOTD[] }>("/api/v1/motd"),
+  getForServer: (serverName: string) =>
+    request<{ message: MOTD; per_server: boolean }>(`/api/v1/motd/${encodeURIComponent(serverName)}`),
+  setForServer: (serverName: string, body: { message: string; enabled?: boolean }) =>
+    request<MOTD>(`/api/v1/motd/${encodeURIComponent(serverName)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteForServer: (serverName: string) =>
+    request<{ ok: boolean }>(`/api/v1/motd/${encodeURIComponent(serverName)}`, {
+      method: "DELETE",
+    }),
+  setGlobal: (message: string) =>
+    request<MOTD>("/api/v1/motd", { method: "PUT", body: JSON.stringify({ message }) }),
+};
+
+// --- Settings (per-server INI files) ---
+
+export interface INIEntry { key: string; value: string; }
+export interface INISection { name: string; entries: INIEntry[]; }
+export interface INIFile {
+  path: string;
+  rel_path: string;
+  sections: INISection[];
+}
+
+export const settingsApi = {
+  list: (serverName: string) =>
+    request<{ files: string[] }>(`/api/v1/servers/${encodeURIComponent(serverName)}/settings`),
+  read: (serverName: string, file: string) =>
+    request<INIFile>(`/api/v1/servers/${encodeURIComponent(serverName)}/settings/${encodeURIComponent(file)}`),
+  write: (serverName: string, file: string, body: INIFile) =>
+    request<{ ok: boolean }>(`/api/v1/servers/${encodeURIComponent(serverName)}/settings/${encodeURIComponent(file)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  syncBans: (serverName: string) =>
+    request<{ ok: boolean; ban_count: number; path: string }>(
+      `/api/v1/servers/${encodeURIComponent(serverName)}/settings/sync-bans`,
+      { method: "POST" },
+    ),
+};

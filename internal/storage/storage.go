@@ -192,6 +192,34 @@ func allMigrations() []migration {
 				return err
 			},
 		},
+		{
+			version: 5,
+			name:    "phase5-motd",
+			up: func(tx *sql.Tx) error {
+				// motd.server_name intentionally does NOT have a REFERENCES
+				// servers(name) constraint — we want MOTD entries to be
+				// creatable for planned servers before they're added to the
+				// servers table. (v2 had the same flexibility.)
+				_, err := tx.Exec(`
+					CREATE TABLE motd (
+						server_name TEXT PRIMARY KEY,
+						message TEXT NOT NULL,
+						enabled INTEGER NOT NULL DEFAULT 1,
+						updated_at TEXT NOT NULL,
+						updated_by TEXT NOT NULL DEFAULT ''
+					);
+
+					-- Key-value store for global settings (used for the
+					-- global default MOTD when no per-server row exists).
+					CREATE TABLE settings (
+						key TEXT PRIMARY KEY,
+						value TEXT NOT NULL,
+						updated_at TEXT NOT NULL
+					);
+				`)
+				return err
+			},
+		},
 	}
 }
 

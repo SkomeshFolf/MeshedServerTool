@@ -100,6 +100,26 @@ func (bs *Store) Remove(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ListSteamIDs returns just the SteamID column, in banned_at DESC order.
+// Used by the per-server BannedIDs.ini sync.
+func (bs *Store) ListSteamIDs(ctx context.Context) ([]string, error) {
+	rows, err := bs.s.DB().QueryContext(ctx,
+		`SELECT steam_id FROM bans ORDER BY banned_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 type scanner interface{ Scan(dest ...any) error }
 
 func scanBan(r scanner) (*Ban, error) {
