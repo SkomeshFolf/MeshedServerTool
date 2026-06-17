@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Skomesh/MeshedServerTool/internal/hub"
 	"github.com/Skomesh/MeshedServerTool/internal/logs"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 )
@@ -33,6 +34,7 @@ var ErrInvalidTransition = errors.New("invalid state transition")
 // Manager coordinates all managed servers.
 type Manager struct {
 	store  *storage.Store
+	hub    *hub.Hub
 	mu     sync.RWMutex
 	servers map[string]*Server
 }
@@ -42,9 +44,10 @@ type Manager struct {
 // "crashed" at startup — we can't know if the original process is still
 // alive, and we'd rather the user re-start explicitly than think a server
 // is running when it isn't.
-func NewManager(store *storage.Store) (*Manager, error) {
+func NewManager(store *storage.Store, h *hub.Hub) (*Manager, error) {
 	m := &Manager{
 		store:   store,
+		hub:     h,
 		servers: make(map[string]*Server),
 	}
 	servers, err := store.Servers().ListServers(context.Background())
@@ -67,6 +70,7 @@ func NewManager(store *storage.Store) (*Manager, error) {
 		}
 		m.servers[srv.Name] = &Server{
 			store: store,
+			hub:   h,
 			cfg:   srv,
 			state: state,
 		}
@@ -87,6 +91,7 @@ func (m *Manager) AddServer(srv *storage.Server) {
 	}
 	m.servers[srv.Name] = &Server{
 		store: m.store,
+		hub:   m.hub,
 		cfg:   srv,
 		state: state,
 	}
@@ -180,6 +185,7 @@ func (m *Manager) Restart(ctx context.Context, name string) error {
 // Server is one managed game server.
 type Server struct {
 	store *storage.Store
+	hub   *hub.Hub
 	cfg   *storage.Server
 	state *storage.ServerState
 	mu    sync.Mutex
@@ -188,6 +194,19 @@ type Server struct {
 	cancel     context.CancelFunc
 	logBuf     *logs.Buffer
 	logBufOnce sync.Once
+}
+
+// publishState broadcasts the current state to the hub. Caller must NOT
+// hold s.mu; the function takes the lock briefly to snapshot, then
+// publishes with the lock released to keep the critical section short.
+func (s *Server) publishState() {
+	if s.hub == nil {
+		return
+	}
+	s.mu.Lock()
+	view := storage.ServerView{Server: *s.cfg, State: *s.state}
+	s.mu.Unlock()
+	s.hub.Publish(hub.Event{Type: "server.state", Data: view})
 }
 
 // IsRunning reports whether the server's subprocess is alive.
@@ -205,9 +224,24 @@ func (s *Server) LogBuffer() *logs.Buffer {
 
 // logBufLazy returns the server's log buffer, allocating it on first use.
 // Backed by sync.Once so concurrent callers don't double-allocate.
+//
+// The buffer is also wired into the hub on first allocation: every new
+// line is published as a hub.Event with type "log.line". Subscribers
+// (WebSocket clients) receive the line in real time.
 func (s *Server) logBufLazy() *logs.Buffer {
 	s.logBufOnce.Do(func() {
 		s.logBuf = logs.NewBuffer(500) // last 500 lines
+		if s.hub != nil {
+			s.logBuf.OnAppend(func(l logs.Line) {
+				s.hub.Publish(hub.Event{
+					Type: "log.line",
+					Data: map[string]any{
+						"server_name": s.cfg.Name,
+						"line":        l,
+					},
+				})
+			})
+		}
 	})
 	return s.logBuf
 }
@@ -265,6 +299,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.cmd = cmd
 	buf := s.logBufLazy() // allocate buffer while we hold the lock
 	s.mu.Unlock()
+	s.publishState() // broadcast the "starting" event
 
 	if err := cmd.Start(); err != nil {
 		s.mu.Lock()
@@ -273,6 +308,7 @@ func (s *Server) Start(ctx context.Context) error {
 		s.state.Status = storage.StatusCrashed
 		_ = s.store.Servers().UpdateStateStatus(ctx, s.cfg.Name, storage.StatusCrashed, nil, nil, ptrTime(time.Now().UTC()), nil)
 		s.mu.Unlock()
+		s.publishState() // broadcast the "crashed" event
 		return fmt.Errorf("start process: %w", err)
 	}
 
@@ -282,6 +318,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.state.Status = storage.StatusRunning
 	_ = s.store.Servers().UpdateStateStatus(ctx, s.cfg.Name, storage.StatusRunning, &pid, &now, nil, nil)
 	s.mu.Unlock()
+	s.publishState() // broadcast the "running" event
 
 	// Pump both pipes into the log buffer.
 	go pumpPipe(stdoutPipe, buf, "stdout")
@@ -314,6 +351,9 @@ func (s *Server) Start(ctx context.Context) error {
 			s.cancel = nil
 		}
 		s.mu.Unlock()
+		if wasRunning {
+			s.publishState() // broadcast the final state
+		}
 	}()
 
 	return nil
@@ -332,6 +372,7 @@ func (s *Server) Stop(ctx context.Context, grace time.Duration) error {
 	s.state.Status = storage.StatusStopping
 	_ = s.store.Servers().UpdateStateStatus(ctx, s.cfg.Name, storage.StatusStopping, nil, nil, nil, nil)
 	s.mu.Unlock()
+	s.publishState() // broadcast the "stopping" event
 
 	if cmd == nil || cmd.Process == nil {
 		return nil

@@ -8,13 +8,14 @@ import (
 	"strings"
 
 	"github.com/Skomesh/MeshedServerTool/internal/auth"
+	"github.com/Skomesh/MeshedServerTool/internal/hub"
 	"github.com/Skomesh/MeshedServerTool/internal/server"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 	"github.com/Skomesh/MeshedServerTool/web"
 )
 
 // NewRouter constructs the HTTP handler.
-func NewRouter(store *storage.Store, manager *server.Manager, dataDir string) http.Handler {
+func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, dataDir string) http.Handler {
 	mux := http.NewServeMux()
 
 	// Health endpoint (used by orchestrators, also a quick smoke test)
@@ -27,6 +28,7 @@ func NewRouter(store *storage.Store, manager *server.Manager, dataDir string) ht
 	authSvc := auth.NewService(store)
 	authDeps := &v1AuthDeps{svc: authSvc, store: store}
 	serverDeps := &v1ServerDeps{store: store, manager: manager}
+	wsDeps := &v1WebSocketDeps{hub: h}
 
 	mux.Handle("/api/v1/auth/", http.StripPrefix("/api/v1/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := strings.TrimPrefix(r.URL.Path, "/")
@@ -55,6 +57,10 @@ func NewRouter(store *storage.Store, manager *server.Manager, dataDir string) ht
 	stripped := http.StripPrefix("/api/v1/servers", serverDeps)
 	mux.Handle("/api/v1/servers/", authSvc.Middleware(stripped))
 	mux.Handle("/api/v1/servers", authSvc.Middleware(stripped))
+
+	// /api/v1/ws — WebSocket endpoint. Auth-protected; same cookie as
+	// REST. Streams all hub events to the client.
+	mux.Handle("/api/v1/ws", authSvc.Middleware(http.HandlerFunc(wsDeps.handleWebSocket)))
 
 	// Catch-all for unmounted /api/* — keep the 501 contract from Phase 0
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {

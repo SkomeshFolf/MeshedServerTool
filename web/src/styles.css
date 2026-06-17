@@ -11,6 +11,7 @@
   --err: #f87171;
   --warn: #facc15;
   --danger: #dc2626;
+  --pending: #60a5fa;
 }
 
 * { box-sizing: border-box; }
@@ -51,6 +52,7 @@ html, body, #root {
 .health { font-size: 0.85rem; }
 .health .ok { color: var(--ok); }
 .health .err { color: var(--err); }
+.health .warn { color: var(--warn); }
 
 main { padding: 1.5rem; }
 

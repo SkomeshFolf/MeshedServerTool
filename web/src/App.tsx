@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
-import { serversApi, type ServerView } from "./serversApi";
+import { serversApi, type ServerView, type LogLine } from "./serversApi";
+import { useWebSocket, type WSMessage } from "./useWebSocket";
 import type { Health } from "./types";
 import "./styles.css";
 
@@ -11,33 +12,38 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [servers, setServers] = useState<ServerView[]>([]);
-  const [serversError, setServersError] = useState<string | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
 
-  // Polling loop for the dashboard — replaced with WebSockets in Phase 3.
+  // Fetch initial server list once auth is settled. After that, all
+  // updates come through the WebSocket.
   useEffect(() => {
+    if (!auth.authenticated) return;
     let mounted = true;
-    const load = () => {
-      serversApi
-        .list()
-        .then((s: ServerView[]) => {
-          if (mounted) {
-            setServers(s);
-            setServersError(null);
-          }
-        })
-        .catch((e: unknown) => {
-          if (mounted) {
-            setServersError(e instanceof Error ? e.message : String(e));
-          }
-        });
-    };
-    load();
-    const id = window.setInterval(load, 2000);
+    serversApi
+      .list()
+      .then((s) => mounted && setServers(s))
+      .catch(() => {});
     return () => {
       mounted = false;
-      window.clearInterval(id);
     };
-  }, []);
+  }, [auth.authenticated]);
+
+  // WebSocket: live state updates replace the Phase 2 polling.
+  useWebSocket({
+    onEvent: (msg: WSMessage) => {
+      if (msg.type === "server.state") {
+        const updated = msg.data as ServerView;
+        setServers((prev) => {
+          const idx = prev.findIndex((s) => s.name === updated.name);
+          if (idx === -1) return [...prev, updated];
+          const next = prev.slice();
+          next[idx] = updated;
+          return next;
+        });
+      }
+    },
+    onConnectionChange: setWsConnected,
+  });
 
   useEffect(() => {
     fetch("/healthz")
@@ -89,38 +95,32 @@ export default function App() {
           </button>
         </div>
         <div className="health">
-          {health ? (
-            <span className="ok">● {health.version}</span>
-          ) : healthError ? (
-            <span className="err">● backend offline</span>
+          {wsConnected ? (
+            <span className="ok">● live</span>
           ) : (
-            <span>● connecting…</span>
+            <span className="warn">● reconnecting…</span>
           )}
+          {health ? (
+            <span className="ok" style={{ marginLeft: "0.5rem" }}>{health.version}</span>
+          ) : healthError ? (
+            <span className="err" style={{ marginLeft: "0.5rem" }}>● offline</span>
+          ) : null}
         </div>
       </header>
       <main>
-        <OutletWrapper servers={servers} serversError={serversError} />
+        <OutletWrapper servers={servers} />
       </main>
     </div>
   );
 }
 
-// Router-aware content area. Renders different pages based on the URL.
-// Using a single component here (rather than a deep <Outlet /> tree) keeps
-// the v3.0 router footprint small; we can split into separate route
-// components when pages grow beyond a screenful.
-function OutletWrapper({
-  servers,
-  serversError,
-}: {
-  servers: ServerView[];
-  serversError: string | null;
-}) {
+// Router-aware content area.
+function OutletWrapper({ servers }: { servers: ServerView[] }) {
   const path = window.location.pathname;
   if (path === "/servers/new") return <CreateServerPage />;
   const detailMatch = /^\/servers\/([^/]+)$/.exec(path);
   if (detailMatch) return <ServerDetailPage name={detailMatch[1]} />;
-  return <DashboardPage servers={servers} serversError={serversError} />;
+  return <DashboardPage servers={servers} />;
 }
 
 function statusLabel(s: ServerView["state"]["status"]): string {
@@ -131,18 +131,17 @@ function StatusPill({ status }: { status: ServerView["state"]["status"] }) {
   return <span className={`pill pill-${status}`}>{statusLabel(status)}</span>;
 }
 
-function DashboardPage({
-  servers,
-  serversError,
-}: {
-  servers: ServerView[];
-  serversError: string | null;
-}) {
-  if (serversError) {
+function DashboardPage({ servers }: { servers: ServerView[] }) {
+  if (servers.length === 0) {
     return (
       <section className="dashboard">
-        <h2>Dashboard</h2>
-        <p className="error">Failed to load servers: {serversError}</p>
+        <div className="row">
+          <h2>Servers</h2>
+          <Link to="/servers/new" className="btn">+ Add server</Link>
+        </div>
+        <p className="muted">
+          No servers yet. <Link to="/servers/new">Add one</Link> to get started.
+        </p>
       </section>
     );
   }
@@ -152,42 +151,36 @@ function DashboardPage({
         <h2>Servers</h2>
         <Link to="/servers/new" className="btn">+ Add server</Link>
       </div>
-      {servers.length === 0 ? (
-        <p className="muted">
-          No servers yet. <Link to="/servers/new">Add one</Link> to get started.
-        </p>
-      ) : (
-        <table className="servers">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Players</th>
-              <th>Port</th>
-              <th>Map</th>
-              <th></th>
+      <table className="servers">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Players</th>
+            <th>Port</th>
+            <th>Map</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {servers.map((s) => (
+            <tr key={s.name}>
+              <td>
+                <Link to={`/servers/${encodeURIComponent(s.name)}`}>{s.name}</Link>
+              </td>
+              <td><StatusPill status={s.state.status} /></td>
+              <td>
+                {s.state.current_users}/{s.max_players}
+              </td>
+              <td>{s.port}</td>
+              <td className="muted">{s.state.current_map || "—"}</td>
+              <td>
+                <Link to={`/servers/${encodeURIComponent(s.name)}`}>Manage</Link>
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {servers.map((s) => (
-              <tr key={s.name}>
-                <td>
-                  <Link to={`/servers/${encodeURIComponent(s.name)}`}>{s.name}</Link>
-                </td>
-                <td><StatusPill status={s.state.status} /></td>
-                <td>
-                  {s.state.current_users}/{s.max_players}
-                </td>
-                <td>{s.port}</td>
-                <td className="muted">{s.state.current_map || "—"}</td>
-                <td>
-                  <Link to={`/servers/${encodeURIComponent(s.name)}`}>Manage</Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+          ))}
+        </tbody>
+      </table>
     </section>
   );
 }
@@ -317,22 +310,32 @@ function ServerDetailPage({ name }: { name: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Poll server state
+  // One-shot fetch for full server detail.
   useEffect(() => {
     let mounted = true;
-    const load = () => {
-      serversApi
-        .get(name)
-        .then((s: ServerView) => mounted && setServer(s))
-        .catch((e: unknown) => mounted && setError(e instanceof Error ? e.message : String(e)));
-    };
-    load();
-    const id = window.setInterval(load, 2000);
-    return () => {
-      mounted = false;
-      window.clearInterval(id);
-    };
+    serversApi
+      .get(name)
+      .then((s) => mounted && setServer(s))
+      .catch((e) => mounted && setError(e instanceof Error ? e.message : String(e)));
+    return () => { mounted = false; };
   }, [name]);
+
+  // WebSocket drives live updates for this server (state + log lines).
+  useWebSocket({
+    onEvent: (msg: WSMessage) => {
+      if (msg.type === "server.state") {
+        const updated = msg.data as ServerView;
+        if (updated.name === name) setServer(updated);
+      } else if (msg.type === "log.line") {
+        const d = msg.data as { server_name: string; line: LogLine };
+        if (d.server_name === name) {
+          // Push to the LogViewer via a custom event so the viewer
+          // (which has its own useEffect) appends without re-fetching.
+          window.dispatchEvent(new CustomEvent("meshed:log", { detail: d.line }));
+        }
+      }
+    },
+  });
 
   const action = async (kind: "start" | "stop" | "restart" | "delete") => {
     setBusy(kind);
@@ -443,14 +446,14 @@ function ServerDetailPage({ name }: { name: string }) {
 }
 
 function LogViewer({ name }: { name: string }) {
-  const [lines, setLines] = useState<import("./serversApi").LogLine[]>([]);
+  const [lines, setLines] = useState<LogLine[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [streamConnected, setStreamConnected] = useState(false);
 
-  // 1. Snapshot on mount so we have something to show immediately.
+  // Snapshot on mount.
   useEffect(() => {
     let mounted = true;
-    serversApi.logsTail(name, 200).then((l: import("./serversApi").LogLine[]) => {
+    serversApi.logsTail(name, 200).then((l) => {
       if (mounted) setLines(l);
     }).catch((e: unknown) => {
       if (mounted) setStreamError(e instanceof Error ? e.message : String(e));
@@ -458,25 +461,25 @@ function LogViewer({ name }: { name: string }) {
     return () => { mounted = false; };
   }, [name]);
 
-  // 2. Subscribe to the SSE stream for live updates.
+  // Listen for live log lines pushed by ServerDetailPage's WS handler.
   useEffect(() => {
-    const es = new EventSource(serversApi.logsStreamURL(name), { withCredentials: true } as any);
-    es.addEventListener("open", () => setStreamConnected(true));
-    es.addEventListener("error", () => setStreamConnected(false));
-    es.addEventListener("line", (ev) => {
-      try {
-        const line = JSON.parse((ev as MessageEvent).data) as import("./serversApi").LogLine;
-        setLines((prev) => {
-          const next = [...prev, line];
-          if (next.length > 1000) next.splice(0, next.length - 1000);
-          return next;
-        });
-      } catch (e) {
-        setStreamError(e instanceof Error ? e.message : "parse error");
-      }
-    });
-    return () => es.close();
-  }, [name]);
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent<LogLine>;
+      setLines((prev) => {
+        const next = [...prev, ce.detail];
+        if (next.length > 1000) next.splice(0, next.length - 1000);
+        return next;
+      });
+    };
+    window.addEventListener("meshed:log", handler as EventListener);
+    return () => window.removeEventListener("meshed:log", handler as EventListener);
+  }, []);
+
+  // Show connection state — we get it indirectly because the parent
+  // WS connection is shared; just show "live" once we have any lines.
+  useEffect(() => {
+    if (lines.length > 0) setStreamConnected(true);
+  }, [lines.length]);
 
   return (
     <div className="logs">
@@ -484,7 +487,7 @@ function LogViewer({ name }: { name: string }) {
         {streamConnected ? (
           <span className="ok">● live</span>
         ) : (
-          <span className="muted">● disconnected</span>
+          <span className="muted">● idle</span>
         )}
         {streamError && <span className="err"> · {streamError}</span>}
         <span className="muted" style={{ marginLeft: "0.5rem" }}>

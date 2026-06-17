@@ -34,6 +34,7 @@ type Buffer struct {
 	lines       []Line
 	capacity    int
 	subscribers map[chan Line]struct{}
+	onAppend    []func(Line)
 }
 
 // NewBuffer returns a Buffer that retains the last `capacity` lines.
@@ -46,6 +47,15 @@ func NewBuffer(capacity int) *Buffer {
 		capacity:    capacity,
 		subscribers: make(map[chan Line]struct{}),
 	}
+}
+
+// OnAppend registers a callback that runs after every Append. The callback
+// runs under the buffer lock — keep it fast and non-blocking. Used by
+// the hub to publish each line to WebSocket subscribers.
+func (b *Buffer) OnAppend(fn func(Line)) {
+	b.mu.Lock()
+	b.onAppend = append(b.onAppend, fn)
+	b.mu.Unlock()
 }
 
 // Append adds a line to the buffer and broadcasts to subscribers.
@@ -72,6 +82,9 @@ func (b *Buffer) Append(l Line) {
 	for c := range b.subscribers {
 		subs = append(subs, c)
 	}
+	// Snapshot of the on-append callbacks under lock.
+	callbacks := make([]func(Line), len(b.onAppend))
+	copy(callbacks, b.onAppend)
 	b.mu.Unlock()
 
 	for _, c := range subs {
@@ -81,6 +94,9 @@ func (b *Buffer) Append(l Line) {
 		case c <- l:
 		default:
 		}
+	}
+	for _, fn := range callbacks {
+		fn(l)
 	}
 }
 

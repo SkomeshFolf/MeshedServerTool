@@ -19,6 +19,7 @@ import (
 
 	"github.com/Skomesh/MeshedServerTool/internal/api"
 	"github.com/Skomesh/MeshedServerTool/internal/config"
+	"github.com/Skomesh/MeshedServerTool/internal/hub"
 	"github.com/Skomesh/MeshedServerTool/internal/server"
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 )
@@ -47,13 +48,17 @@ func main() {
 	defer store.Close()
 
 	// Build the server manager (Phase 2+). Rehydrates from storage.
-	manager, err := server.NewManager(store)
+	// Manager publishes state changes to the hub; the WebSocket endpoint
+	// subscribes to the hub and pushes events to clients in real time.
+	h := hub.NewHub()
+	defer h.Close()
+	manager, err := server.NewManager(store, h)
 	if err != nil {
 		log.Fatalf("init server manager: %v", err)
 	}
 
 	// Build router.
-	router := api.NewRouter(store, manager, *dataDir)
+	router := api.NewRouter(store, manager, h, *dataDir)
 
 	// Effective listen address
 	listen := *addr
