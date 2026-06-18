@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd plist for MeshedServerTool v3 (macOS)
+  https://www.launchd.info/
+
+  Install:
+    1. Copy this file to /Library/LaunchDaemons/com.skomesh.meshed.plist
+       (use ~/Library/LaunchAgents/ for per-user install)
+    2. sudo chown root:wheel /Library/LaunchDaemons/com.skomesh.meshed.plist
+    3. sudo chmod 644 /Library/LaunchDaemons/com.skomesh.meshed.plist
+    4. sudo launchctl load -w /Library/LaunchDaemons/com.skomesh.meshed.plist
+    5. Verify: sudo launchctl list | grep meshed
+
+  Logs:
+    /var/log/meshed.out  (stdout)
+    /var/log/meshed.err  (stderr)
+  View with:  tail -f /var/log/meshed.err
+
+  To override the data dir, change ProgramArguments below. The default
+  ($HOME/Library/Application Support/Meshed Server Tool) is fine for
+  a per-user install — the LaunchAgent form uses $HOME automatically.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.skomesh.meshed</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/meshed</string>
+        <string>-addr</string>
+        <string>:5000</string>
+    </array>
+
+    <!-- Run at boot (LaunchDaemon) — for LaunchAgent (per-user) omit this. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart on crash, max 10 retries within 10 minutes. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>ThrottleInterval</key>
+        <integer>10</integer>
+    </dict>
+
+    <!-- 30s graceful shutdown (matches the systemd TimeoutStopSec). -->
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+
+    <!-- Logs -->
+    <key>StandardOutPath</key>
+    <string>/var/log/meshed.out</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/meshed.err</string>
+
+    <!-- Process type + resource limits -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
+</dict>
+</plist>

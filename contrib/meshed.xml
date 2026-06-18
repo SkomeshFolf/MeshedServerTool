@@ -1,0 +1,51 @@
+<!--
+  WinSW service wrapper for MeshedServerTool v3 (Windows)
+  https://github.com/winsw/winsw
+
+  WinSW is a tiny executable that runs any process as a Windows service
+  using the configuration in this XML. Recommended for users who want
+  meshed to start at boot without a manual login session.
+
+  Install:
+    1. Download winsw.exe from https://github.com/winsw/winsw/releases
+    2. Rename it to meshed.exe and place it in C:\Program Files\meshed\
+       (alongside the meshed binary)
+    3. Place this file as meshed.xml in the same directory
+    4. From an admin cmd:
+         cd "C:\Program Files\meshed"
+         meshed.exe install
+         meshed.exe start
+    5. Verify in services.msc — look for "MeshedServerTool v3"
+
+  Logs:
+    C:\Program Files\meshed\meshed.wrapper.log
+-->
+<service>
+    <id>meshed</id>
+    <name>MeshedServerTool v3</name>
+    <description>Web-based manager for SCP: 5k and SCP Pandemic dedicated servers.</description>
+    <executable>%BASE%\meshed.exe</executable>
+    <arguments>-addr :5000 -data-dir "%ProgramData%\meshed-server-tool"</arguments>
+    <workingdirectory>%BASE%</workingdirectory>
+
+    <!-- Run as LocalSystem (default for services.msc install). For a
+         per-user install, use:
+           <serviceaccount>
+             <domain>YOURPC</domain>
+             <user>meshed</user>
+             <password>...</password>
+           </serviceaccount>
+         and create the user first. -->
+    <onfailure action="restart" delay="5 sec"/>
+    <onfailure action="restart" delay="10 sec"/>
+    <resetfailure>1 hour</resetfailure>
+
+    <!-- 30s graceful stop -->
+    <stoptimeout>30 sec</stoptimeout>
+
+    <log mode="roll-by-size">
+        <sizeThreshold>10240</sizeThreshold>
+        <keepFiles>3</keepFiles>
+    </log>
+    <logpath>%BASE%\logs</logpath>
+</service>

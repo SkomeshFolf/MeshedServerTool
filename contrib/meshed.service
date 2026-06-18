@@ -1,0 +1,63 @@
+# systemd unit for MeshedServerTool v3
+#
+# Install:
+#   1. Copy this file to /etc/systemd/system/meshed.service
+#   2. Edit the User= and ExecStart= lines to match your install
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now meshed.service
+#
+# Notes:
+# - The unit runs as a dedicated user (meshed) that you create:
+#     sudo useradd --system --home /var/lib/meshed --shell /usr/sbin/nologin meshed
+# - The data directory defaults to ~meshed/.local/share/meshed-server-tool
+#   unless -data-dir is overridden. Adjust the ExecStart= line if you
+#   want a different location.
+# - Restart= on-failure plus a 5s RestartSec avoids hot-looping if the
+#   process crashes repeatedly.
+# - Hardening directives (NoNewPrivileges, ProtectSystem, etc.) make
+#   the service a poor target for local privilege escalation. Drop
+#   them if they conflict with your environment.
+
+[Unit]
+Description=MeshedServerTool v3 — web manager for SCP: 5k / Pandemic dedicated servers
+Documentation=https://github.com/Skomesh/MeshedServerTool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meshed
+Group=meshed
+WorkingDirectory=/var/lib/meshed
+ExecStart=/usr/local/bin/meshed -addr :5000 -data-dir /var/lib/meshed/data
+Restart=on-failure
+RestartSec=5s
+
+# Graceful shutdown — systemd sends SIGTERM, meshed stops child game
+# servers (audit fix #14) and exits within 30s. TimeoutStopSec caps
+# the wait; after that, systemd sends SIGKILL.
+TimeoutStopSec=35s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/meshed/data
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+# modernc.org/sqlite allocates executable memory pages; leave W^X off.
+MemoryDenyWriteExecute=false
+
+# Logging — pipe to journald at info level. Use -log-level to override.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meshed
+
+[Install]
+WantedBy=multi-user.target
