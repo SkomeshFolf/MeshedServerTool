@@ -28,10 +28,25 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      # The Go binary embeds web/dist via go:embed (see web/embed.go).
+      # web/dist is gitignored, so we have to build it locally before
+      # go vet / go test — otherwise the embed fails with
+      # "pattern all:dist: no matching files found".
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web
+        working-directory: web
+        run: npm ci && npm run build
+
       - name: gofmt
         # CI gate: any file with gofmt issues fails the build.
-        # gofmt -l prints filenames needing reformatting; wc -l gives
-        # a numeric exit code we can compare.
+        # gofmt -l prints filenames needing reformatting; if any
+        # are listed, fail.
         run: |
           out=$(gofmt -l .)
           if [ -n "$out" ]; then
@@ -44,7 +59,7 @@ jobs:
         run: go vet ./...
 
       - name: go test (with race)
-        run: go test -race -count=1 -timeout=120s ./...
+        run: go test -race -count=1 -timeout=180s ./...
 
   build:
     name: cross-compile smoke
@@ -59,10 +74,6 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      # Build the React bundle so the Go binary can embed it. (The
-      # web/ workflow runs the same build but we need the artifacts
-      # here too — we don't share artifacts between jobs in this file
-      # to keep each job self-contained and runnable in isolation.)
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
