@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,6 +33,14 @@ import (
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 )
 
+// version is set at build time via -ldflags:
+//
+//	go build -ldflags '-X main.version=v3.0.0' ./cmd/meshed
+//
+// Defaults to "dev" for local builds. Exposed via /healthz so
+// orchestrators and ops staff can confirm what's running.
+var version = "dev"
+
 func main() {
 	addr := flag.String("addr", "", "listen address (overrides config; e.g. :5000 or 127.0.0.1:5000)")
 	tlsCert := flag.String("tls-cert", "", "path to TLS certificate (enables HTTPS)")
@@ -40,7 +49,30 @@ func main() {
 	autocertCache := flag.String("autocert-cache", "", "directory for autocert cert cache (default: <data-dir>/autocert)")
 	dataDir := flag.String("data-dir", "", "override data directory (default: platform-specific user data dir)")
 	trustedProxies := flag.String("trusted-proxies", "", "comma-separated CIDR list of upstream proxies whose X-Forwarded-For header is honored when stamping session IPs (e.g. '127.0.0.1/32,10.0.0.0/8'). Default: empty (never trust XFF).")
+	logLevel := flag.String("log-level", "info", "log level: debug, info, warn, error. Lower levels are noisier.")
 	flag.Parse()
+
+	// Configure structured logging. We route the stdlib `log` package
+	// through slog so the 70+ existing log.Printf callsites work
+	// unchanged, and any new code can use slog directly. (audit M2)
+	var lvl slog.Level
+	switch strings.ToLower(*logLevel) {
+	case "debug":
+		lvl = slog.LevelDebug
+	case "info", "":
+		lvl = slog.LevelInfo
+	case "warn", "warning":
+		lvl = slog.LevelWarn
+	case "error":
+		lvl = slog.LevelError
+	default:
+		log.Fatalf("invalid -log-level %q (want debug|info|warn|error)", *logLevel)
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: lvl,
+	}).WithAttrs([]slog.Attr{slog.String("version", version)})))
+	log.SetOutput(slog.NewLogLogger(slog.Default().Handler(), slog.LevelInfo).Writer())
+	log.SetFlags(0) // slog already adds time
 
 	// Resolve data directory
 	if *dataDir == "" {
@@ -49,7 +81,7 @@ func main() {
 	if err := os.MkdirAll(*dataDir, 0o700); err != nil {
 		log.Fatalf("create data dir: %v", err)
 	}
-	log.Printf("data dir: %s", *dataDir)
+	slog.Info("data dir resolved", "path", *dataDir)
 
 	// Open storage (Phase 1+ uses SQLite).
 	store, err := storage.Open(filepath.Join(*dataDir, "meshed.db"))
@@ -81,7 +113,7 @@ func main() {
 			}
 		}
 	}
-	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir, trustedCIDRs)
+	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir, trustedCIDRs, version)
 
 	// Effective listen address
 	listen := *addr

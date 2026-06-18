@@ -2,6 +2,7 @@
 package api
 
 import (
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -19,13 +20,15 @@ import (
 )
 
 // NewRouter constructs the HTTP handler.
-func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, reportsStore *reports.Store, bansStore *bans.Store, chatStore *chat.Store, motdStore *motd.Store, dataDir string, trustedProxies []string) http.Handler {
+func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, reportsStore *reports.Store, bansStore *bans.Store, chatStore *chat.Store, motdStore *motd.Store, dataDir string, trustedProxies []string, version string) http.Handler {
 	mux := http.NewServeMux()
 
-	// Health endpoint (used by orchestrators, also a quick smoke test)
+	// Health endpoint (used by orchestrators, also a quick smoke test).
+	// Returns the build-time version so ops can confirm what's running.
+	// `version` is set via -ldflags '-X main.version=...' in main.go.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","version":"v3-dev"}`))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","version":%q}`, version)
 	})
 
 	// Mount /api/v1 subrouter
