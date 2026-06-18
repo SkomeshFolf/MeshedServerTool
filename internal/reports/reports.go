@@ -30,19 +30,19 @@ import (
 
 // Report is the in-memory representation of a reports row.
 type Report struct {
-	ID         int64     `json:"id"`
-	ServerName string    `json:"server_name"`
-	TargetID   string    `json:"target_id"`
-	TargetName string    `json:"target_name"`
-	SourceID   string    `json:"source_id"`
-	SourceName string    `json:"source_name"`
-	Date       string    `json:"date"`
-	Reason     string    `json:"reason"`
-	Text       string    `json:"text"`
-	Hash       string    `json:"hash"`
-	Handled    bool      `json:"handled"`
+	ID         int64      `json:"id"`
+	ServerName string     `json:"server_name"`
+	TargetID   string     `json:"target_id"`
+	TargetName string     `json:"target_name"`
+	SourceID   string     `json:"source_id"`
+	SourceName string     `json:"source_name"`
+	Date       string     `json:"date"`
+	Reason     string     `json:"reason"`
+	Text       string     `json:"text"`
+	Hash       string     `json:"hash"`
+	Handled    bool       `json:"handled"`
 	HandledAt  *time.Time `json:"handled_at,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 // Store is the typed CRUD for reports.

@@ -177,7 +177,11 @@ func (f *File) Write() error {
 		}
 		buf.WriteString("\n")
 	}
-	return os.WriteFile(f.Path, buf.Bytes(), 0o644)
+	// 0o600: INI files contain admin lists, banned SteamIDs, server
+	// passwords — anything written here should not be world-readable on
+	// a multi-user box. The file is also chmod'd if it already existed.
+	// (audit finding M17)
+	return os.WriteFile(f.Path, buf.Bytes(), 0o600)
 }
 
 // SyncBannedIDs writes the global SteamID list to a server's

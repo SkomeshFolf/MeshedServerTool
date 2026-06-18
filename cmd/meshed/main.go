@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,6 +39,7 @@ func main() {
 	autocertDomain := flag.String("autocert-domain", "", "domain for Let's Encrypt autocert (e.g. mesh.example.com). Requires port 80 reachable for HTTP-01 challenge.")
 	autocertCache := flag.String("autocert-cache", "", "directory for autocert cert cache (default: <data-dir>/autocert)")
 	dataDir := flag.String("data-dir", "", "override data directory (default: platform-specific user data dir)")
+	trustedProxies := flag.String("trusted-proxies", "", "comma-separated CIDR list of upstream proxies whose X-Forwarded-For header is honored when stamping session IPs (e.g. '127.0.0.1/32,10.0.0.0/8'). Default: empty (never trust XFF).")
 	flag.Parse()
 
 	// Resolve data directory
@@ -71,7 +73,15 @@ func main() {
 	}
 
 	// Build router.
-	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir)
+	var trustedCIDRs []string
+	if *trustedProxies != "" {
+		for _, c := range strings.Split(*trustedProxies, ",") {
+			if c = strings.TrimSpace(c); c != "" {
+				trustedCIDRs = append(trustedCIDRs, c)
+			}
+		}
+	}
+	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir, trustedCIDRs)
 
 	// Effective listen address
 	listen := *addr

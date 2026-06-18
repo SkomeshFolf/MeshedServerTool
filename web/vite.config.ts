@@ -9,7 +9,10 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    sourcemap: true,
+    // sourcemap: false keeps the embed small and prevents the
+    // .map file from being served to clients. The stack traces are
+    // still useful in the bundled JS for debugging. (audit finding H9)
+    sourcemap: false,
   },
   server: {
     port: 5173,

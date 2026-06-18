@@ -68,8 +68,8 @@ func (d *v1MotdDeps) list(w http.ResponseWriter, r *http.Request) {
 		global = &motd.MOTD{Message: "", Enabled: false, ServerName: "*"}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"global":   global,
-		"servers":  all,
+		"global":  global,
+		"servers": all,
 	})
 }
 
@@ -81,8 +81,8 @@ func (d *v1MotdDeps) getForServer(w http.ResponseWriter, r *http.Request, server
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"message":      m,
-		"per_server":   fromServer,
+		"message":    m,
+		"per_server": fromServer,
 	})
 }
 

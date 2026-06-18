@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 
@@ -14,8 +15,27 @@ import (
 // v1AuthDeps wires the auth endpoints. Auth routes are public (login,
 // bootstrap) plus the authenticated /me route, all under /api/v1/auth.
 type v1AuthDeps struct {
-	svc *auth.Service
+	svc   *auth.Service
 	store *storage.Store
+}
+
+// WithTrustedProxies configures the CIDR allowlist of upstream proxies
+// whose X-Forwarded-For header is honored. If the request's remote
+// address is not in this set, XFF is ignored and r.RemoteAddr is used.
+// Empty (default) = never trust XFF. (audit finding M18)
+func (d *v1AuthDeps) WithTrustedProxies(cidrs ...string) *v1AuthDeps {
+	for _, c := range cidrs {
+		if c == "" {
+			continue
+		}
+		_, n, err := net.ParseCIDR(c)
+		if err != nil {
+			log.Printf("auth: ignoring invalid trusted-proxy CIDR %q: %v", c, err)
+			continue
+		}
+		trustedProxies = append(trustedProxies, n)
+	}
+	return d
 }
 
 // handleLogin authenticates a user. POST /api/v1/auth/login
@@ -227,20 +247,60 @@ func validatePassword(p string) error {
 	return nil
 }
 
-// clientIP returns the best-guess client IP, honoring X-Forwarded-For if
-// present. Sufficient for session audit logs at this stage.
+// clientIP returns the best-guess client IP. We only honor
+// X-Forwarded-For when the immediate remote is a configured trusted
+// proxy — otherwise any client can spoof the header and poison the
+// session audit log. (audit finding M18)
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+	remote := remoteHost(r.RemoteAddr)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" && isTrustedProxy(remote) {
 		// Take the first hop (the original client).
 		if i := strings.IndexByte(xff, ','); i > 0 {
 			return strings.TrimSpace(xff[:i])
 		}
 		return strings.TrimSpace(xff)
 	}
-	// r.RemoteAddr is "host:port" — strip the port.
-	addr := r.RemoteAddr
-	if i := strings.LastIndexByte(addr, ':'); i > 0 {
-		return addr[:i]
+	return remote
+}
+
+// remoteHost strips the port from a "host:port" RemoteAddr and returns
+// the bare host. Empty string if the input is empty.
+func remoteHost(addr string) string {
+	if addr == "" {
+		return ""
+	}
+	// r.RemoteAddr can be a unix socket "@" or "host:port". Use
+	// net.SplitHostPort to be robust; if it fails, fall back to the raw
+	// string (the host portion alone is fine for IP matching).
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
 	}
 	return addr
 }
+
+// isTrustedProxy reports whether the given remote host matches any
+// configured trusted-proxy CIDR. IPv4-mapped IPv6 addresses are
+// normalized to their IPv4 form for matching.
+func isTrustedProxy(host string) bool {
+	if host == "" {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4
+	}
+	for _, n := range trustedProxies {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// trustedProxies is the package-level allowlist set by the router.
+// v1AuthDeps.WithTrustedProxies is the public API; this is the
+// internal lookup used by clientIP.
+var trustedProxies []*net.IPNet

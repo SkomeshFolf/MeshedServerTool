@@ -43,9 +43,9 @@ func TestParseGameplayConfig_MultipleEntries(t *testing.T) {
 	in := "(bOverrideDefaults=True,RecoilMultiplier=0.5,MaxPlayers=32)"
 	got := parseGameplayConfig(in)
 	want := map[string]string{
-		"bOverrideDefaults":  "True",
-		"RecoilMultiplier":   "0.5",
-		"MaxPlayers":         "32",
+		"bOverrideDefaults": "True",
+		"RecoilMultiplier":  "0.5",
+		"MaxPlayers":        "32",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)

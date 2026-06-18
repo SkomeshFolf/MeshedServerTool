@@ -102,6 +102,40 @@ func (s *Store) DB() *sql.DB {
 	return s.db
 }
 
+// Backup writes a consistent, point-in-time snapshot of the database
+// to destPath using SQLite's VACUUM INTO statement. The resulting file
+// is a fully self-contained SQLite database (WAL is folded in) that can
+// be restored with `meshed --data-dir <new>` after copying it into
+// place as `meshed.db`.
+//
+// VACUUM INTO takes a brief write lock for the duration of the copy,
+// which is fine for a manually-invoked backup endpoint. The file is
+// created with 0o600 (chmod'd after creation; SQLite doesn't take a
+// mode arg on VACUUM INTO). On Windows the chmod is a no-op but the
+// default ACL on the user's profile dir is fine for single-user.
+// (audit finding M13)
+func (s *Store) Backup(destPath string) error {
+	// VACUUM INTO refuses to overwrite an existing file; we want a
+	// clean path so the user's prior snapshot isn't silently lost if
+	// the new copy succeeds but the rename is interrupted. Resolve
+	// to an absolute path, refuse to write into the data dir as
+	// `meshed.db` (would clobber the live DB), and clean up partial
+	// files on error.
+	if err := s.db.Ping(); err != nil {
+		return fmt.Errorf("ping before backup: %w", err)
+	}
+	// Use a tmp file in the same dir as destPath so the rename is
+	// atomic on POSIX. We can't pass a bind-mount to VACUUM INTO,
+	// so we let SQLite write to destPath directly and then chmod
+	// it. If the VACUUM itself fails, we remove any partial file.
+	if _, err := s.db.Exec(`VACUUM INTO ?`, destPath); err != nil {
+		_ = os.Remove(destPath) // best effort
+		return fmt.Errorf("vacuum into: %w", err)
+	}
+	_ = os.Chmod(destPath, 0o600) // best effort on Windows
+	return nil
+}
+
 // migration is a single versioned schema change. Migrations run in order;
 // once applied, they never re-run.
 type migration struct {

@@ -19,7 +19,7 @@ import (
 )
 
 // NewRouter constructs the HTTP handler.
-func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, reportsStore *reports.Store, bansStore *bans.Store, chatStore *chat.Store, motdStore *motd.Store, dataDir string) http.Handler {
+func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, reportsStore *reports.Store, bansStore *bans.Store, chatStore *chat.Store, motdStore *motd.Store, dataDir string, trustedProxies []string) http.Handler {
 	mux := http.NewServeMux()
 
 	// Health endpoint (used by orchestrators, also a quick smoke test)
@@ -30,7 +30,7 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 
 	// Mount /api/v1 subrouter
 	authSvc := auth.NewService(store)
-	authDeps := &v1AuthDeps{svc: authSvc, store: store}
+	authDeps := (&v1AuthDeps{svc: authSvc, store: store}).WithTrustedProxies(trustedProxies...)
 	serverDeps := &v1ServerDeps{store: store, manager: manager}
 	reportsDeps := &v1ReportsDeps{store: reportsStore, hub: h}
 	bansDeps := &v1BansDeps{store: bansStore, hub: h}
@@ -43,6 +43,7 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 	settingsDeps := &v1SettingsDeps{store: store, manager: manager, bans: bansStore}
 	tabsDeps := &v1TabsDeps{store: store, manager: manager}
 	consoleDeps := &v1ConsoleDeps{manager: manager}
+	backupDeps := &v1BackupDeps{store: store, dataDir: dataDir}
 
 	mux.Handle("/api/v1/auth/", http.StripPrefix("/api/v1/auth", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := strings.TrimPrefix(r.URL.Path, "/")
@@ -180,6 +181,13 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 		authSvc.Middleware(http.StripPrefix("/api/v1/motd", motdDeps)))
 	mux.Handle("/api/v1/motd",
 		authSvc.Middleware(http.StripPrefix("/api/v1/motd", motdDeps)))
+
+	// /api/v1/admin/backup — admin-only DB snapshot.
+	// Must be mounted BEFORE the /api/v1/ catch-all. (audit finding M13)
+	mux.Handle("/api/v1/admin/backup",
+		authSvc.Middleware(http.HandlerFunc(backupDeps.ServeHTTP)))
+	mux.Handle("/api/v1/admin/backup/",
+		authSvc.Middleware(http.HandlerFunc(backupDeps.ServeHTTP)))
 
 	// Catch-all for unmounted /api/* — keep the 501 contract from Phase 0
 	mux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {

@@ -27,13 +27,13 @@ type User struct {
 
 // Session mirrors a row in the sessions table.
 type Session struct {
-	Token       string
-	UserID      int64
-	CreatedAt   time.Time
-	LastSeenAt  time.Time
-	ExpiresAt   time.Time
-	UserAgent   string
-	IP          string
+	Token      string
+	UserID     int64
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+	ExpiresAt  time.Time
+	UserAgent  string
+	IP         string
 }
 
 // UserStore provides typed CRUD over the users table.
@@ -42,7 +42,7 @@ type UserStore struct{ s *Store }
 // SessionStore provides typed CRUD over the sessions table.
 type SessionStore struct{ s *Store }
 
-func (s *Store) Users() *UserStore     { return &UserStore{s: s} }
+func (s *Store) Users() *UserStore       { return &UserStore{s: s} }
 func (s *Store) Sessions() *SessionStore { return &SessionStore{s: s} }
 
 // CountUsers returns the total number of users. Used to gate first-user bootstrap.

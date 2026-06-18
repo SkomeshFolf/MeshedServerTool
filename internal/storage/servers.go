@@ -21,30 +21,30 @@ const (
 
 // Server is the user-managed configuration for a game server.
 type Server struct {
-	Name       string `json:"name"`
-	InstallDir string `json:"install_dir"`
-	Port       int    `json:"port"`
-	MaxPlayers int    `json:"max_players"`
-	Hostname   string `json:"hostname"`
+	Name       string         `json:"name"`
+	InstallDir string         `json:"install_dir"`
+	Port       int            `json:"port"`
+	MaxPlayers int            `json:"max_players"`
+	Hostname   string         `json:"hostname"`
 	Args       map[string]any `json:"args"`
-	Autostart  bool   `json:"autostart"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	Autostart  bool           `json:"autostart"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
 }
 
 // ServerState is the runtime state, separate from config. Updated by the
 // server manager as the process lifecycle progresses.
 type ServerState struct {
-	ServerName       string `json:"server_name"`
-	Status           Status `json:"status"`
-	PID              *int64 `json:"pid,omitempty"`
-	StartedAt        *time.Time `json:"started_at,omitempty"`
-	StoppedAt        *time.Time `json:"stopped_at,omitempty"`
-	LastExitCode     *int    `json:"last_exit_code,omitempty"`
-	CurrentUsers     int     `json:"current_users"`
-	CurrentMap       string  `json:"current_map"`
-	CurrentGamemode  string  `json:"current_gamemode"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ServerName      string     `json:"server_name"`
+	Status          Status     `json:"status"`
+	PID             *int64     `json:"pid,omitempty"`
+	StartedAt       *time.Time `json:"started_at,omitempty"`
+	StoppedAt       *time.Time `json:"stopped_at,omitempty"`
+	LastExitCode    *int       `json:"last_exit_code,omitempty"`
+	CurrentUsers    int        `json:"current_users"`
+	CurrentMap      string     `json:"current_map"`
+	CurrentGamemode string     `json:"current_gamemode"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 // ServerView is what the API returns: server config + current state joined.
@@ -161,9 +161,13 @@ func (ss *ServerStore) DeleteServer(ctx context.Context, name string) error {
 
 // GetState returns the runtime state for a server.
 func (ss *ServerStore) GetState(ctx context.Context, name string) (*ServerState, error) {
+	// COALESCE current_map / current_gamemode to '' so the Go side
+	// can scan them as plain strings. The migration v6 cleanup also
+	// backfills any legacy NULLs, but new state rows created by
+	// CreateServer leave the columns NULL until they're observed.
 	row := ss.s.db.QueryRowContext(ctx,
 		`SELECT server_name, status, pid, started_at, stopped_at, last_exit_code,
-		 current_users, current_map, current_gamemode, updated_at
+		 current_users, COALESCE(current_map, ''), COALESCE(current_gamemode, ''), updated_at
 		 FROM server_state WHERE server_name = ?`, name)
 	return scanState(row)
 }
@@ -173,7 +177,7 @@ func (ss *ServerStore) GetState(ctx context.Context, name string) (*ServerState,
 func (ss *ServerStore) ListStates(ctx context.Context) ([]*ServerState, error) {
 	rows, err := ss.s.db.QueryContext(ctx,
 		`SELECT server_name, status, pid, started_at, stopped_at, last_exit_code,
-		 current_users, current_map, current_gamemode, updated_at
+		 current_users, COALESCE(current_map, ''), COALESCE(current_gamemode, ''), updated_at
 		 FROM server_state`)
 	if err != nil {
 		return nil, err

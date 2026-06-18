@@ -15,7 +15,7 @@ import (
 
 // v1WebSocketDeps groups the WebSocket endpoint's dependencies.
 type v1WebSocketDeps struct {
-	hub      *hub.Hub
+	hub *hub.Hub
 	// allowedOrigins is the explicit allowlist for WS upgrades. If nil,
 	// we derive it from the request's Host header at upgrade time
 	// (allowing same-origin only). Set via WithAllowedOrigins to override.

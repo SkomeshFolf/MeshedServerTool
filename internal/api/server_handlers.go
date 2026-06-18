@@ -158,12 +158,12 @@ func (d *v1ServerDeps) updateServer(w http.ResponseWriter, r *http.Request, name
 		return
 	}
 	var body struct {
-		InstallDir *string         `json:"install_dir"`
-		Port       *int            `json:"port"`
-		MaxPlayers *int            `json:"max_players"`
-		Hostname   *string         `json:"hostname"`
-		Args       map[string]any  `json:"args"`
-		Autostart  *bool           `json:"autostart"`
+		InstallDir *string        `json:"install_dir"`
+		Port       *int           `json:"port"`
+		MaxPlayers *int           `json:"max_players"`
+		Hostname   *string        `json:"hostname"`
+		Args       map[string]any `json:"args"`
+		Autostart  *bool          `json:"autostart"`
 	}
 	if err := decodeJSON(w, r, &body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")

@@ -127,8 +127,8 @@ func TestList_SinceFiltersByAt(t *testing.T) {
 	var players []string
 	for rows.Next() {
 		var (
-			id                                                                                  int64
-			sn, pn, msg, atStr                                                                   string
+			id                 int64
+			sn, pn, msg, atStr string
 		)
 		if err := rows.Scan(&id, &sn, &pn, &msg, &atStr); err != nil {
 			rows.Close()

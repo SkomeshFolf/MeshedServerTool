@@ -35,8 +35,8 @@ type LogEntry struct {
 // handleAggregateLogs returns the last N lines from every server's
 // log buffer, merged and sorted by timestamp.
 //
-//   GET /api/v1/logs?tail=200       — JSON {entries: [...]} newest-first
-//   GET /api/v1/logs?server=alpha   — filter to one server (optional)
+//	GET /api/v1/logs?tail=200       — JSON {entries: [...]} newest-first
+//	GET /api/v1/logs?server=alpha   — filter to one server (optional)
 func (d *v1AggregateDeps) handleAggregateLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -107,9 +107,9 @@ type ChatEntry struct {
 // handleAggregateChats returns recent chat messages across all
 // (or one) servers.
 //
-//   GET /api/v1/chats?limit=200      — newest-first across every server
-//   GET /api/v1/chats?server=alpha   — filter to one server
-//   GET /api/v1/chats?since=ID       — only messages newer than ID
+//	GET /api/v1/chats?limit=200      — newest-first across every server
+//	GET /api/v1/chats?server=alpha   — filter to one server
+//	GET /api/v1/chats?since=ID       — only messages newer than ID
 func (d *v1AggregateDeps) handleAggregateChats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
