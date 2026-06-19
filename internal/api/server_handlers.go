@@ -2,8 +2,10 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,8 +18,127 @@ import (
 // v1ServerDeps groups server-API dependencies. Implements http.Handler
 // so it can be passed through http.StripPrefix.
 type v1ServerDeps struct {
-	store   *storage.Store
-	manager *server.Manager
+	store             *storage.Store
+	manager           *server.Manager
+	installRoot       string   // absolute base; install_dir must be under this
+	allowedBinRoots   []string // extra path prefixes that executable may live under (e.g. /bin, /usr/bin)
+	allowArbitraryExe bool     // dangerous: lets executable live anywhere (tests only)
+}
+
+// SetInstallRoot configures the validation base for install_dir.
+// Must be called before the router is exposed (in NewRouter).
+func (d *v1ServerDeps) SetInstallRoot(root string, allowedBinRoots []string, allowArbitraryExe bool) {
+	d.installRoot = filepath.Clean(root)
+	d.allowedBinRoots = allowedBinRoots
+	d.allowArbitraryExe = allowArbitraryExe
+}
+
+// validateInstallDir returns nil if the path is acceptable, or an error
+// describing why it was rejected. Used at create/update time. (CRIT-2)
+//
+// Rules:
+//   - must be absolute
+//   - must not contain '..' after filepath.Clean
+//   - must live under d.installRoot (configured via --install-root)
+//   - must not be one of the reserved system paths
+func (d *v1ServerDeps) validateInstallDir(p string) error {
+	if p == "" {
+		return errors.New("install_dir is required")
+	}
+	if !filepath.IsAbs(p) {
+		return errors.New("install_dir must be an absolute path")
+	}
+	cleaned := filepath.Clean(p)
+	if strings.Contains(cleaned, "..") {
+		return errors.New("install_dir must not contain '..'")
+	}
+	if d.installRoot == "" {
+		return errors.New("server validation not configured (install_root missing)")
+	}
+	root := filepath.Clean(d.installRoot)
+	rel, err := filepath.Rel(root, cleaned)
+	if err != nil || strings.HasPrefix(rel, "..") || rel == ".." {
+		return fmt.Errorf("install_dir must be under %s", root)
+	}
+	// Reserved system paths (defense in depth — the install_root check
+	// already prevents these in most cases, but if someone sets
+	// --install-root=/ we want an extra signal).
+	for _, reserved := range []string{
+		"/etc", "/proc", "/sys", "/dev", "/boot", "/bin", "/sbin",
+		"/usr/bin", "/usr/sbin", "/usr/lib", "/usr/include",
+		"/var/lib/dpkg", "/var/lib/rpm",
+	} {
+		if cleaned == reserved || strings.HasPrefix(cleaned, reserved+"/") {
+			return fmt.Errorf("install_dir under reserved system path: %s", reserved)
+		}
+	}
+	return nil
+}
+
+// validateExecutablePath returns nil if executable is acceptable, or an error.
+// Used at create/update time. (CRIT-1)
+//
+// Rules (in order):
+//   - empty is OK (server has no command yet; user configures later)
+//   - if d.allowArbitraryExe is true, anything goes (tests only)
+//   - must be absolute
+//   - must live under install_dir, OR under one of d.allowedBinRoots,
+//     OR under /bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin (system paths)
+//   - must not contain '..'
+func (d *v1ServerDeps) validateExecutablePath(exe, installDir string) error {
+	if exe == "" {
+		return nil
+	}
+	if d.allowArbitraryExe {
+		return nil
+	}
+	if !filepath.IsAbs(exe) {
+		return errors.New("executable must be an absolute path")
+	}
+	cleaned := filepath.Clean(exe)
+	if strings.Contains(cleaned, "..") {
+		return errors.New("executable must not contain '..'")
+	}
+	// Under install_dir is always fine.
+	if installDir != "" {
+		instClean := filepath.Clean(installDir)
+		rel, err := filepath.Rel(instClean, cleaned)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, "..") {
+			return nil
+		}
+	}
+	// Then check system path allowlist (defaults plus user-configured).
+	allowed := append([]string{"/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/local/bin"}, d.allowedBinRoots...)
+	for _, prefix := range allowed {
+		prefix = filepath.Clean(prefix)
+		if cleaned == prefix || strings.HasPrefix(cleaned, prefix+"/") {
+			return nil
+		}
+	}
+	return fmt.Errorf("executable must be under install_dir, a system bin path, or use --allow-arbitrary-executable")
+}
+
+// execArgs extracts and validates the args.executable and args.argv from
+// a request body. Called by createServer and updateServer. (CRIT-1)
+func (d *v1ServerDeps) execArgsFromBody(args map[string]any, installDir string) (string, []string, error) {
+	if args == nil {
+		return "", nil, nil
+	}
+	exe, _ := args["executable"].(string)
+	if err := d.validateExecutablePath(exe, installDir); err != nil {
+		return "", nil, err
+	}
+	var argv []string
+	if raw, ok := args["argv"].([]any); ok {
+		for _, a := range raw {
+			s, ok := a.(string)
+			if !ok {
+				continue // silently drop non-strings (matches buildCommand behavior)
+			}
+			argv = append(argv, s)
+		}
+	}
+	return exe, argv, nil
 }
 
 // ServeHTTP routes /api/v1/servers/* requests.
@@ -113,6 +234,14 @@ func (d *v1ServerDeps) createServer(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "install_dir is required")
 		return
 	}
+	if err := d.validateInstallDir(body.InstallDir); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, _, err := d.execArgsFromBody(body.Args, body.InstallDir); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if body.Port == 0 {
 		body.Port = 7777
 	}
@@ -170,7 +299,18 @@ func (d *v1ServerDeps) updateServer(w http.ResponseWriter, r *http.Request, name
 		return
 	}
 	if body.InstallDir != nil {
+		if err := d.validateInstallDir(*body.InstallDir); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		existing.InstallDir = *body.InstallDir
+	}
+	if body.Args != nil {
+		if _, _, err := d.execArgsFromBody(body.Args, existing.InstallDir); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		existing.Args = body.Args
 	}
 	if body.Port != nil {
 		existing.Port = *body.Port
@@ -180,9 +320,6 @@ func (d *v1ServerDeps) updateServer(w http.ResponseWriter, r *http.Request, name
 	}
 	if body.Hostname != nil {
 		existing.Hostname = *body.Hostname
-	}
-	if body.Args != nil {
-		existing.Args = body.Args
 	}
 	if body.Autostart != nil {
 		existing.Autostart = *body.Autostart

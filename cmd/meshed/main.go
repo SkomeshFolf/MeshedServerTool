@@ -50,6 +50,12 @@ func main() {
 	dataDir := flag.String("data-dir", "", "override data directory (default: platform-specific user data dir)")
 	trustedProxies := flag.String("trusted-proxies", "", "comma-separated CIDR list of upstream proxies whose X-Forwarded-For header is honored when stamping session IPs (e.g. '127.0.0.1/32,10.0.0.0/8'). Default: empty (never trust XFF).")
 	logLevel := flag.String("log-level", "info", "log level: debug, info, warn, error. Lower levels are noisier.")
+	installRoot := flag.String("install-root", "", "base directory under which server install_dir must live (e.g. /opt/servers). Required in production. Default: empty (reject all server create/update).")
+	allowedBinRoots := flag.String("allowed-bin-roots", "", "comma-separated extra absolute path prefixes that server executable may live under (in addition to /bin,/sbin,/usr/bin,/usr/sbin,/usr/local/bin). E.g. '/opt/scpsl,/srv/games'. Default: empty.")
+	allowArbitraryExe := flag.Bool("allow-arbitrary-executable", false, "DANGEROUS: disable the executable allowlist (CRIT-1). Any path in args.executable will be accepted. Intended for tests only.")
+	corsOrigins := flag.String("cors-allowed-origins", "", "comma-separated list of origins allowed to make cross-origin requests (CORS). Use '*' to allow any origin (insecure — dev only). Default: empty (no CORS headers; browser blocks cross-origin).")
+	enableSecurityHeaders := flag.Bool("security-headers", true, "set standard security response headers (HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, CSP). Disable only for debugging.")
+	cookieSecureForce := flag.String("cookie-secure", "auto", "session cookie Secure flag: 'auto' (Secure when r.TLS or XFF-Proto=https from a trusted proxy), 'always' (force Secure — recommended for production), 'never' (force off — HTTP local testing only). Default: 'auto'.")
 	flag.Parse()
 
 	// Configure structured logging. We route the stdlib `log` package
@@ -113,7 +119,47 @@ func main() {
 			}
 		}
 	}
-	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir, trustedCIDRs, version)
+	var allowedBinList []string
+	if *allowedBinRoots != "" {
+		for _, p := range strings.Split(*allowedBinRoots, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				allowedBinList = append(allowedBinList, p)
+			}
+		}
+	}
+	var corsList []string
+	if *corsOrigins != "" {
+		for _, o := range strings.Split(*corsOrigins, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				corsList = append(corsList, o)
+			}
+		}
+	}
+	var cookieSecurePtr *bool
+	switch strings.ToLower(strings.TrimSpace(*cookieSecureForce)) {
+	case "always", "true", "yes", "on", "1":
+		t := true
+		cookieSecurePtr = &t
+	case "never", "false", "no", "off", "0":
+		f := false
+		cookieSecurePtr = &f
+	case "auto", "":
+		// leave nil — auth package falls back to r.TLS / hook
+	default:
+		log.Printf("warning: --cookie-secure=%q is not recognized; expected auto|always|never. Falling back to auto.", *cookieSecureForce)
+	}
+	routerOpts := api.RouterOptions{
+		InstallRoot:              *installRoot,
+		AllowedBinRoots:          allowedBinList,
+		AllowArbitraryExecutable: *allowArbitraryExe,
+		CorsAllowedOrigins:       corsList,
+		EnableSecurityHeaders:    *enableSecurityHeaders,
+		CookieSecure:             cookieSecurePtr,
+	}
+	if *installRoot == "" {
+		log.Printf("warning: --install-root is not set; server create/update will reject all install_dir values (CRIT-2). Set --install-root in production.")
+	}
+	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir, trustedCIDRs, version, routerOpts)
 
 	// Effective listen address
 	listen := *addr
@@ -125,6 +171,13 @@ func main() {
 		Addr:              listen,
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
+		// (MED-2) Slowloris/slow-read hardening for the request body.
+		// We bound ReadTimeout (covers both headers+body); we deliberately
+		// leave WriteTimeout at 0 because the WebSocket endpoint is a
+		// long-lived connection and would be killed at 30s. Per-route
+		// timeouts can be added via http.TimeoutHandler if needed.
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 120 * time.Second,
 	}
 
 	// TLS configuration. Three modes, in order of precedence:

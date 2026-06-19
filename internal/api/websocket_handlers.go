@@ -36,11 +36,13 @@ func (d *v1WebSocketDeps) WithAllowedOrigins(origins ...string) *v1WebSocketDeps
 func (d *v1WebSocketDeps) originAllowed(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		// No Origin header: same-origin browser requests don't always
-		// send one, and non-browser clients (curl, scripts) won't either.
-		// For a browser-only attack, Origin is mandatory, so rejecting
-		// empty would be too strict.
-		return true
+		// (HIGH-3) Require the Origin header. Browsers always send it on
+		// WS upgrade; non-browser clients (curl, scripts) don't, and
+		// they should use the REST API or pass an Origin explicitly.
+		// Rejecting empty Origin closes the CSRF gap where a script
+		// hijack or a misbehaving extension could open a WS without
+		// the Origin check ever running.
+		return false
 	}
 	// Build the effective allowlist: explicit set, or same-origin only.
 	allowed := d.allowedOrigins

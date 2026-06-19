@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 
@@ -19,13 +20,42 @@ import (
 	"github.com/Skomesh/MeshedServerTool/web"
 )
 
+// RouterOptions configures optional security middleware for the API.
+// All zero values are safe defaults (no install_root = server validation
+// rejects everything, CORS/CSP disabled).
+type RouterOptions struct {
+	// InstallRoot is the base directory under which install_dir must live.
+	// Required for server create/update. Default: empty (reject all).
+	InstallRoot string
+	// AllowedBinRoots are extra absolute path prefixes that executable may
+	// live under (in addition to /bin, /sbin, /usr/bin, /usr/sbin,
+	// /usr/local/bin which are always allowed).
+	AllowedBinRoots []string
+	// AllowArbitraryExecutable disables the executable allowlist. Intended
+	// for tests only; documented in --help.
+	AllowArbitraryExecutable bool
+	// CorsAllowedOrigins is a list of origins that may make cross-origin
+	// requests via CORS. Empty list = no CORS headers (browser blocks).
+	// Use ["*"] to allow any origin (insecure — only for local testing).
+	CorsAllowedOrigins []string
+	// EnableSecurityHeaders turns on HSTS, X-Content-Type-Options,
+	// X-Frame-Options, Referrer-Policy, and a default CSP. Recommended
+	// for any deployment that is reachable from a browser.
+	EnableSecurityHeaders bool
+	// CookieSecure overrides the default Secure attribute behavior.
+	//   nil  = Secure when r.TLS != nil OR X-Forwarded-Proto: https from a trusted proxy
+	//   &true = always Secure (use for production)
+	//   &false = never Secure (only for local HTTP testing)
+	CookieSecure *bool
+}
+
 // NewRouter constructs the HTTP handler.
-func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, reportsStore *reports.Store, bansStore *bans.Store, chatStore *chat.Store, motdStore *motd.Store, dataDir string, trustedProxies []string, version string) http.Handler {
+func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, reportsStore *reports.Store, bansStore *bans.Store, chatStore *chat.Store, motdStore *motd.Store, dataDir string, trustedProxies []string, version string, opts RouterOptions) http.Handler {
 	mux := http.NewServeMux()
 
-	// Health endpoint (used by orchestrators, also a quick smoke test).
-	// Returns the build-time version so ops can confirm what's running.
-	// `version` is set via -ldflags '-X main.version=...' in main.go.
+	// Apply global middlewares (panic recovery + security headers + CORS).
+	// Wrapping order matters: outermost runs first. Stack is
+	// panicRecover(headers(CORS(handler))).
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"status":"ok","version":%q}`, version)
@@ -33,15 +63,44 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 
 	// Mount /api/v1 subrouter
 	authSvc := auth.NewService(store)
+	if opts.CookieSecure != nil {
+		// (HIGH-1) Operator forces the Secure flag regardless of transport.
+		auth.SetCookieSecureOverride(opts.CookieSecure)
+	}
+	// (HIGH-1) When running behind a trusted reverse proxy, the XFF
+	// "proto=https" signal should also flip Secure on. We register a
+	// hook so the auth package can ask us on each request.
+	auth.WithCookieSecureHook(func(r *http.Request) bool {
+		if r.TLS != nil {
+			return true
+		}
+		// Mirror the XFF logic in clientIP (auth_handlers.go).
+		// We don't need full trusted-proxy validation here — the
+		// cookie is only a defense-in-depth signal, not a trust gate.
+		// If the operator chose to trust the proxy, honor the header.
+		if len(trustedProxies) > 0 {
+			remote := r.RemoteAddr
+			if host, _, err := net.SplitHostPort(remote); err == nil {
+				remote = host
+			}
+			if isTrustedProxy(remote) {
+				if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+					return true
+				}
+			}
+		}
+		return false
+	})
 	authDeps := (&v1AuthDeps{svc: authSvc, store: store}).WithTrustedProxies(trustedProxies...)
 	serverDeps := &v1ServerDeps{store: store, manager: manager}
+	serverDeps.SetInstallRoot(opts.InstallRoot, opts.AllowedBinRoots, opts.AllowArbitraryExecutable)
 	reportsDeps := &v1ReportsDeps{store: reportsStore, hub: h}
 	bansDeps := &v1BansDeps{store: bansStore, hub: h}
 	chatDeps := &v1ChatDeps{store: chatStore}
 	aggregateDeps := &v1AggregateDeps{manager: manager, store: store}
 	logsHandler := http.HandlerFunc(aggregateDeps.handleAggregateLogs)
 	chatsHandler := http.HandlerFunc(aggregateDeps.handleAggregateChats)
-	wsDeps := &v1WebSocketDeps{hub: h}
+	wsDeps := &v1WebSocketDeps{hub: h, allowedOrigins: opts.CorsAllowedOrigins}
 	motdDeps := &v1MotdDeps{store: motdStore}
 	settingsDeps := &v1SettingsDeps{store: store, manager: manager, bans: bansStore}
 	tabsDeps := &v1TabsDeps{store: store, manager: manager}
@@ -208,7 +267,16 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 	}
 	mux.Handle("/", spaHandler{staticFS: staticFS, dataDir: dataDir})
 
-	return mux
+	// Wrap the entire mux with global security middlewares. Order:
+	//   1. panicRecover (outermost) — never let a panic kill the server
+	//   2. securityHeaders (HIGH-2) — HSTS, X-Content-Type-Options, etc.
+	//   3. cors (HIGH-2) — Access-Control-Allow-Origin for cross-origin
+	//   4. mux (innermost) — actual routes
+	return chainMiddleware(mux,
+		panicRecoverMiddleware,
+		securityHeadersMiddleware(opts.EnableSecurityHeaders),
+		corsMiddleware(opts.CorsAllowedOrigins),
+	)
 }
 
 // spaHandler serves embedded static assets and falls back to index.html

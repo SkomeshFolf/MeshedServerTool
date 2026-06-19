@@ -61,7 +61,9 @@ func TestWebSocket_OriginAllowed(t *testing.T) {
 		origin      string
 		wantAllowed bool
 	}{
-		{"empty_origin_allowed", "meshed.local", "", true},
+		// (HIGH-3) empty Origin is now REJECTED. Browsers always send
+		// Origin on WS upgrade; non-browser clients must set it explicitly.
+		{"empty_origin_denied", "meshed.local", "", false},
 		{"same_origin_http_allowed", "meshed.local", "http://meshed.local", true},
 		{"same_origin_https_allowed", "meshed.local", "https://meshed.local", true},
 		{"cross_origin_denied", "meshed.local", "https://evil.example", false},
@@ -181,6 +183,10 @@ func TestWebSocket_RoundTrip(t *testing.T) {
 	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		HTTPHeader: http.Header{
 			"Cookie": []string{auth.SessionCookieName + "=" + token},
+			// (HIGH-3) Match the test server's host so the same-origin
+			// check passes. coder/websocket sends Origin by default
+			// when set here; without it the upgrade would be denied.
+			"Origin": []string{ts.URL},
 		},
 	})
 	if err != nil {

@@ -9,12 +9,19 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/Skomesh/MeshedServerTool/internal/storage"
 )
+
+// cookieSecureMu guards the package-level cookieSecureOverride and
+// cookieSecureHook vars. They're process-wide configuration set at
+// startup (or in tests), so we serialize reads/writes even though
+// the production access pattern is single-writer / many-readers.
+var cookieSecureMu sync.RWMutex
 
 // SessionCookieName is the HTTP cookie carrying the session token.
 const SessionCookieName = "meshed_session"
@@ -146,36 +153,87 @@ func (s *Service) CreateFirstUser(ctx context.Context, username, password string
 }
 
 // SetSessionCookie writes the session token as a cookie on the response.
-// Secure flag is set when the request was received over HTTPS (we trust
-// r.TLS because Go's http.Server doesn't terminate TLS itself by default —
-// if a reverse proxy is in front, it should set X-Forwarded-Proto; future
-// work can honor that).
+// Secure flag is set when the request was received over HTTPS OR when
+// an X-Forwarded-Proto: https header is present from a trusted proxy.
+// The override pointer (set via SetCookieSecureOverride) lets operators
+// force Secure on (recommended for production) or off (only for HTTP
+// local testing). (HIGH-1)
 func SetSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
-	secure := r.TLS != nil
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   shouldUseSecureCookie(r),
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(SessionDuration),
 		MaxAge:   int(SessionDuration.Seconds()),
 	})
 }
 
-// ClearSessionCookie invalidates the cookie client-side.
+// ClearSessionCookie invalidates the cookie client-side. Secure flag
+// follows the same rule as SetSessionCookie.
 func ClearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	secure := r.TLS != nil
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   shouldUseSecureCookie(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
+}
+
+// cookieSecureOverride is a package-level override for the Secure flag.
+// nil (default) = derive from r.TLS / X-Forwarded-Proto.
+// &true = always Secure (recommended in production).
+// &false = never Secure (HTTP local testing only).
+//
+// Set via SetCookieSecureOverride from main.go at startup.
+var cookieSecureOverride *bool
+
+// SetCookieSecureOverride configures the global cookie Secure behavior.
+// Pass nil to revert to the r.TLS-derived default.
+func SetCookieSecureOverride(v *bool) {
+	cookieSecureMu.Lock()
+	cookieSecureOverride = v
+	cookieSecureMu.Unlock()
+}
+
+// shouldUseSecureCookie decides whether to mark the session cookie
+// Secure on this request. The override wins; otherwise we defer to the
+// optional hook (set by the api package via WithCookieSecureHook), and
+// if that's not configured we fall back to r.TLS != nil.
+func shouldUseSecureCookie(r *http.Request) bool {
+	cookieSecureMu.RLock()
+	override := cookieSecureOverride
+	hook := cookieSecureHook
+	cookieSecureMu.RUnlock()
+	if override != nil {
+		return *override
+	}
+	if hook != nil {
+		return hook(r)
+	}
+	return r.TLS != nil
+}
+
+// cookieSecureHook is an optional function set by the api package
+// (via WithCookieSecureHook) that derives the Secure flag from the
+// full request — typically to honor X-Forwarded-Proto from trusted
+// proxies. When nil, the default r.TLS check is used.
+var cookieSecureHook func(r *http.Request) bool
+
+// WithCookieSecureHook registers a function that decides the Secure
+// flag for a given request. Called by the api package after parsing
+// --trusted-proxies. Returns the previous hook so callers can chain.
+func WithCookieSecureHook(fn func(r *http.Request) bool) func(r *http.Request) bool {
+	cookieSecureMu.Lock()
+	prev := cookieSecureHook
+	cookieSecureHook = fn
+	cookieSecureMu.Unlock()
+	return prev
 }
 
 // TokenFromRequest extracts the session token from the request, or "" if absent.
