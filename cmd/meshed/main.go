@@ -50,7 +50,7 @@ func main() {
 	dataDir := flag.String("data-dir", "", "override data directory (default: platform-specific user data dir)")
 	trustedProxies := flag.String("trusted-proxies", "", "comma-separated CIDR list of upstream proxies whose X-Forwarded-For header is honored when stamping session IPs (e.g. '127.0.0.1/32,10.0.0.0/8'). Default: empty (never trust XFF).")
 	logLevel := flag.String("log-level", "info", "log level: debug, info, warn, error. Lower levels are noisier.")
-	installRoot := flag.String("install-root", "", "base directory under which server install_dir must live (e.g. /opt/servers). Required in production. Default: empty (reject all server create/update).")
+	installRoot := flag.String("install-root", "", "base directory under which server install_dir must live (e.g. /opt/servers). Default: '<data-dir>/servers' — auto-created with mode 0700. Set explicitly in production to keep game-server files outside the data dir.")
 	allowedBinRoots := flag.String("allowed-bin-roots", "", "comma-separated extra absolute path prefixes that server executable may live under (in addition to /bin,/sbin,/usr/bin,/usr/sbin,/usr/local/bin). E.g. '/opt/scpsl,/srv/games'. Default: empty.")
 	allowArbitraryExe := flag.Bool("allow-arbitrary-executable", false, "DANGEROUS: disable the executable allowlist (CRIT-1). Any path in args.executable will be accepted. Intended for tests only.")
 	corsOrigins := flag.String("cors-allowed-origins", "", "comma-separated list of origins allowed to make cross-origin requests (CORS). Use '*' to allow any origin (insecure — dev only). Default: empty (no CORS headers; browser blocks cross-origin).")
@@ -148,6 +148,17 @@ func main() {
 	default:
 		log.Printf("warning: --cookie-secure=%q is not recognized; expected auto|always|never. Falling back to auto.", *cookieSecureForce)
 	}
+	if *installRoot == "" {
+		// (UX fix): default to <data-dir>/servers so first-run users
+		// can create servers without setting a flag. CRIT-2 still
+		// applies — install_dir values must live under this default,
+		// and reserved system paths are still rejected.
+		*installRoot = filepath.Join(*dataDir, "servers")
+		if err := os.MkdirAll(*installRoot, 0o700); err != nil {
+			log.Fatalf("create install-root: %v", err)
+		}
+		slog.Info("install-root defaulted", "path", *installRoot, "note", "set --install-root explicitly to use a different location")
+	}
 	routerOpts := api.RouterOptions{
 		InstallRoot:              *installRoot,
 		AllowedBinRoots:          allowedBinList,
@@ -155,9 +166,6 @@ func main() {
 		CorsAllowedOrigins:       corsList,
 		EnableSecurityHeaders:    *enableSecurityHeaders,
 		CookieSecure:             cookieSecurePtr,
-	}
-	if *installRoot == "" {
-		log.Printf("warning: --install-root is not set; server create/update will reject all install_dir values (CRIT-2). Set --install-root in production.")
 	}
 	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir, trustedCIDRs, version, routerOpts)
 
