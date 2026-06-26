@@ -50,7 +50,9 @@ func main() {
 	dataDir := flag.String("data-dir", "", "override data directory (default: platform-specific user data dir)")
 	trustedProxies := flag.String("trusted-proxies", "", "comma-separated CIDR list of upstream proxies whose X-Forwarded-For header is honored when stamping session IPs (e.g. '127.0.0.1/32,10.0.0.0/8'). Default: empty (never trust XFF).")
 	logLevel := flag.String("log-level", "info", "log level: debug, info, warn, error. Lower levels are noisier.")
-	installRoot := flag.String("install-root", "", "base directory under which server install_dir must live (e.g. /opt/servers). Default: '<data-dir>/servers' — auto-created with mode 0700. Set explicitly in production to keep game-server files outside the data dir.")
+	installRoot := flag.String("install-root", "", "base directory under which server install_dir must live by default (e.g. /opt/servers). Default: '<data-dir>/servers' — auto-created with mode 0700. See also --install-roots (extra allowed bases) and --allow-arbitrary-install-dir (no constraint).")
+	installRoots := flag.String("install-roots", "", "comma-separated EXTRA absolute path prefixes that install_dir may live under (in addition to --install-root). E.g. '/home/user/Steam/steamapps/common,/opt/scpsl'. Default: empty.")
+	allowArbitraryInstallDir := flag.Bool("allow-arbitrary-install-dir", false, "DANGEROUS: disable the install_dir under-root check (CRIT-2). install_dir can be any absolute path. Use this when you trust the operator (dev/testing) or when you have an external sandbox (container, jail) preventing abuse. Production deployments should leave this off and use --install-roots to whitelist specific bases.")
 	allowedBinRoots := flag.String("allowed-bin-roots", "", "comma-separated extra absolute path prefixes that server executable may live under (in addition to /bin,/sbin,/usr/bin,/usr/sbin,/usr/local/bin). E.g. '/opt/scpsl,/srv/games'. Default: empty.")
 	allowArbitraryExe := flag.Bool("allow-arbitrary-executable", false, "DANGEROUS: disable the executable allowlist (CRIT-1). Any path in args.executable will be accepted. Intended for tests only.")
 	corsOrigins := flag.String("cors-allowed-origins", "", "comma-separated list of origins allowed to make cross-origin requests (CORS). Use '*' to allow any origin (insecure — dev only). Default: empty (no CORS headers; browser blocks cross-origin).")
@@ -127,6 +129,14 @@ func main() {
 			}
 		}
 	}
+	var installRootsList []string
+	if *installRoots != "" {
+		for _, p := range strings.Split(*installRoots, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				installRootsList = append(installRootsList, p)
+			}
+		}
+	}
 	var corsList []string
 	if *corsOrigins != "" {
 		for _, o := range strings.Split(*corsOrigins, ",") {
@@ -151,8 +161,12 @@ func main() {
 	if *installRoot == "" {
 		// (UX fix): default to <data-dir>/servers so first-run users
 		// can create servers without setting a flag. CRIT-2 still
-		// applies — install_dir values must live under this default,
-		// and reserved system paths are still rejected.
+		// applies — install_dir values must live under this default
+		// (or under --install-roots), and reserved system paths are
+		// still rejected. If --allow-arbitrary-install-dir is on,
+		// the install_dir check is skipped entirely so we don't
+		// need a sensible default here; we still create the dir so
+		// the auto-populated form has somewhere to land.
 		*installRoot = filepath.Join(*dataDir, "servers")
 		if err := os.MkdirAll(*installRoot, 0o700); err != nil {
 			log.Fatalf("create install-root: %v", err)
@@ -161,11 +175,16 @@ func main() {
 	}
 	routerOpts := api.RouterOptions{
 		InstallRoot:              *installRoot,
+		ExtraInstallRoots:        installRootsList,
+		AllowArbitraryInstallDir: *allowArbitraryInstallDir,
 		AllowedBinRoots:          allowedBinList,
 		AllowArbitraryExecutable: *allowArbitraryExe,
 		CorsAllowedOrigins:       corsList,
 		EnableSecurityHeaders:    *enableSecurityHeaders,
 		CookieSecure:             cookieSecurePtr,
+	}
+	if *allowArbitraryInstallDir {
+		slog.Warn("install-dir constraint disabled (--allow-arbitrary-install-dir); any absolute path is accepted. Use only in dev/testing or behind an external sandbox.")
 	}
 	router := api.NewRouter(store, manager, h, reportsStore, bansStore, chatStore, motdStore, *dataDir, trustedCIDRs, version, routerOpts)
 

@@ -49,9 +49,10 @@ func newTestServerEnv(t *testing.T) (*v1ServerDeps, *storage.Store, http.Handler
 	deps := &v1ServerDeps{store: store, manager: mgr}
 	// (CRIT-1+2) Tests run with full validation: install_root="/"
 	// (everything passes the install_dir under-root check) and
-	// allowArbitraryExe=true (tests use /bin/sh etc. as fake game
-	// binaries; production code would reject these).
-	deps.SetInstallRoot("/", nil, true)
+	// CRIT-1+2 escape flags both on: tests use /bin/sh as fake game
+	// binary AND arbitrary install_dir paths. Production code would
+	// leave both off and rely on install_root + allowed_bin_roots.
+	deps.SetInstallRoot("/", nil, nil, true, true)
 	// Wire the prefix-stripped handler the same way the production
 	// router does it (see internal/api/router.go). The production
 	// router uses http.StripPrefix + auth middleware; we skip the

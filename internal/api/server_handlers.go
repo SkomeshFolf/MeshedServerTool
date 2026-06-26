@@ -18,19 +18,40 @@ import (
 // v1ServerDeps groups server-API dependencies. Implements http.Handler
 // so it can be passed through http.StripPrefix.
 type v1ServerDeps struct {
-	store             *storage.Store
-	manager           *server.Manager
-	installRoot       string   // absolute base; install_dir must be under this
-	allowedBinRoots   []string // extra path prefixes that executable may live under (e.g. /bin, /usr/bin)
-	allowArbitraryExe bool     // dangerous: lets executable live anywhere (tests only)
+	store                    *storage.Store
+	manager                  *server.Manager
+	installRoot              string   // primary allowed base for install_dir
+	extraInstallRoots        []string // additional allowed bases (OR'd with installRoot)
+	allowedBinRoots          []string // extra path prefixes that executable may live under (e.g. /opt/scpsl)
+	allowArbitraryExe        bool     // CRIT-1 escape hatch — disables executable allowlist
+	allowArbitraryInstallDir bool     // CRIT-2 escape hatch — disables install_dir under-root check
 }
 
-// SetInstallRoot configures the validation base for install_dir.
-// Must be called before the router is exposed (in NewRouter).
-func (d *v1ServerDeps) SetInstallRoot(root string, allowedBinRoots []string, allowArbitraryExe bool) {
+// SetInstallRoot configures the validation bases for install_dir and
+// the executable allowlist. Must be called before the router is
+// exposed (in NewRouter).
+//
+//   - root: primary allowed base. install_dir must live under it.
+//   - extra: additional allowed bases (OR'd with root). Use to whitelist
+//     Steam install dirs, /opt/scpsl, etc. without going full-arbitrary.
+//   - allowedBinRoots: extra absolute path prefixes that executable may
+//     live under (in addition to system bins).
+//   - allowArbitraryExe: disables the executable allowlist (CRIT-1 escape).
+//   - allowArbitraryInstallDir: disables the install_dir under-root check
+//     entirely (CRIT-2 escape). Use only in dev/testing or behind an
+//     external sandbox.
+func (d *v1ServerDeps) SetInstallRoot(
+	root string,
+	extra []string,
+	allowedBinRoots []string,
+	allowArbitraryExe bool,
+	allowArbitraryInstallDir bool,
+) {
 	d.installRoot = filepath.Clean(root)
+	d.extraInstallRoots = extra
 	d.allowedBinRoots = allowedBinRoots
 	d.allowArbitraryExe = allowArbitraryExe
+	d.allowArbitraryInstallDir = allowArbitraryInstallDir
 }
 
 // validateInstallDir returns nil if the path is acceptable, or an error
@@ -39,7 +60,8 @@ func (d *v1ServerDeps) SetInstallRoot(root string, allowedBinRoots []string, all
 // Rules:
 //   - must be absolute
 //   - must not contain '..' after filepath.Clean
-//   - must live under d.installRoot (configured via --install-root)
+//   - if d.allowArbitraryInstallDir is true, no under-root check runs
+//   - otherwise: must live under d.installRoot OR any of d.extraInstallRoots
 //   - must not be one of the reserved system paths
 func (d *v1ServerDeps) validateInstallDir(p string) error {
 	if p == "" {
@@ -52,13 +74,34 @@ func (d *v1ServerDeps) validateInstallDir(p string) error {
 	if strings.Contains(cleaned, "..") {
 		return errors.New("install_dir must not contain '..'")
 	}
-	if d.installRoot == "" {
-		return errors.New("server validation not configured (install_root missing)")
-	}
-	root := filepath.Clean(d.installRoot)
-	rel, err := filepath.Rel(root, cleaned)
-	if err != nil || strings.HasPrefix(rel, "..") || rel == ".." {
-		return fmt.Errorf("install_dir must be under %s", root)
+	// Allow-arbitrary escape: skip the under-root check entirely.
+	// The operator has opted into trusting this. Reserved path checks
+	// still apply below as a defense-in-depth backstop.
+	if !d.allowArbitraryInstallDir {
+		if d.installRoot == "" && len(d.extraInstallRoots) == 0 {
+			return errors.New("server validation not configured (install_root missing)")
+		}
+		allowed := false
+		if d.installRoot != "" {
+			root := filepath.Clean(d.installRoot)
+			if rel, err := filepath.Rel(root, cleaned); err == nil && rel != ".." && !strings.HasPrefix(rel, "..") {
+				allowed = true
+			}
+		}
+		if !allowed {
+			for _, extra := range d.extraInstallRoots {
+				extraClean := filepath.Clean(extra)
+				if rel, err := filepath.Rel(extraClean, cleaned); err == nil && rel != ".." && !strings.HasPrefix(rel, "..") {
+					allowed = true
+					break
+				}
+			}
+		}
+		if !allowed {
+			roots := []string{d.installRoot}
+			roots = append(roots, d.extraInstallRoots...)
+			return fmt.Errorf("install_dir must be under one of: %s", strings.Join(roots, ", "))
+		}
 	}
 	// Reserved system paths (defense in depth — the install_root check
 	// already prevents these in most cases, but if someone sets
@@ -82,8 +125,8 @@ func (d *v1ServerDeps) validateInstallDir(p string) error {
 //   - empty is OK (server has no command yet; user configures later)
 //   - if d.allowArbitraryExe is true, anything goes (tests only)
 //   - must be absolute
-//   - must live under install_dir, OR under one of d.allowedBinRoots,
-//     OR under /bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin (system paths)
+//   - must live under install_dir, OR under one of d.extraInstallRoots,
+//     OR under one of d.allowedBinRoots, OR under the system bin set
 //   - must not contain '..'
 func (d *v1ServerDeps) validateExecutablePath(exe, installDir string) error {
 	if exe == "" {
@@ -102,8 +145,16 @@ func (d *v1ServerDeps) validateExecutablePath(exe, installDir string) error {
 	// Under install_dir is always fine.
 	if installDir != "" {
 		instClean := filepath.Clean(installDir)
-		rel, err := filepath.Rel(instClean, cleaned)
-		if err == nil && rel != ".." && !strings.HasPrefix(rel, "..") {
+		if rel, err := filepath.Rel(instClean, cleaned); err == nil && rel != ".." && !strings.HasPrefix(rel, "..") {
+			return nil
+		}
+	}
+	// Under any extra install root is also fine — if you whitelisted
+	// /opt/scpsl as an install dir, executables under there should
+	// be allowed without an extra --allowed-bin-roots flag.
+	for _, extra := range d.extraInstallRoots {
+		prefix := filepath.Clean(extra)
+		if cleaned == prefix || strings.HasPrefix(cleaned, prefix+"/") {
 			return nil
 		}
 	}

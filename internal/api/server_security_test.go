@@ -11,7 +11,7 @@ import (
 func TestValidateInstallDir(t *testing.T) {
 	t.Parallel()
 	d := &v1ServerDeps{}
-	d.SetInstallRoot("/opt/servers", nil, false)
+	d.SetInstallRoot("/opt/servers", nil, nil, false, false)
 	cases := []struct {
 		name    string
 		path    string
@@ -20,17 +20,17 @@ func TestValidateInstallDir(t *testing.T) {
 	}{
 		{"empty", "", true, "required"},
 		{"relative", "srv/foo", true, "absolute"},
-		{"dotdot_in_clean", "/opt/servers/../etc/passwd", true, "under /opt/servers"},
-		{"outside_root", "/home/skomesh/srv", true, "under /opt/servers"},
-		{"root_itself", "/", true, "under /opt/servers"},
-		{"etc", "/etc/foo", true, "under /opt/servers"},
-		{"different_dir_same_prefix", "/opt/serversFoo", true, "under /opt/servers"},
+		{"dotdot_in_clean", "/opt/servers/../etc/passwd", true, "must be under"},
+		{"outside_root", "/home/skomesh/srv", true, "must be under"},
+		{"root_itself", "/", true, "must be under"},
+		{"etc", "/etc/foo", true, "must be under"},
+		{"different_dir_same_prefix", "/opt/serversFoo", true, "must be under"},
 		// Reserved system paths: only rejected at top level. A path like
 		// /opt/servers/etc/foo is fine (it lives under install_root, not
 		// under /etc). The real protection is the install_root check above.
 		// When install_root is /opt/servers, /etc/* fails the under-root
 		// check before the reserved check runs.
-		{"etc_fails_under_root_check", "/etc/foo", true, "under /opt/servers"},
+		{"etc_fails_under_root_check", "/etc/foo", true, "must be under"},
 		{"opt_servers_with_etc_segment_ok", "/opt/servers/etc", false, ""},
 		{"opt_servers_with_usr_bin_segment_ok", "/opt/servers/usr/bin", false, ""},
 		{"valid_under_root", "/opt/servers/foo", false, ""},
@@ -59,7 +59,7 @@ func TestValidateInstallDir(t *testing.T) {
 func TestValidateInstallDir_RootSlash(t *testing.T) {
 	t.Parallel()
 	d := &v1ServerDeps{}
-	d.SetInstallRoot("/", nil, false)
+	d.SetInstallRoot("/", nil, nil, false, false)
 	if err := d.validateInstallDir("/tmp/srv"); err != nil {
 		t.Errorf("/tmp/srv under root-slash should be accepted, got: %v", err)
 	}
@@ -71,11 +71,74 @@ func TestValidateInstallDir_RootSlash(t *testing.T) {
 	}
 }
 
+// TestValidateInstallDir_ExtraRoots verifies that --install-roots whitelists
+// additional bases alongside the primary --install-root. This is the
+// "Steam install lives in /home/user/Steam/steamapps/common" use case.
+func TestValidateInstallDir_ExtraRoots(t *testing.T) {
+	t.Parallel()
+	d := &v1ServerDeps{}
+	d.SetInstallRoot("/opt/servers", []string{
+		"/home/user/Steam/steamapps/common",
+		"/srv/games",
+	}, nil, false, false)
+
+	// Primary root: works as before.
+	if err := d.validateInstallDir("/opt/servers/foo"); err != nil {
+		t.Errorf("primary root should accept, got: %v", err)
+	}
+	// Each extra root: works.
+	for _, p := range []string{
+		"/home/user/Steam/steamapps/common/SCP Pandemic Dedicated Server",
+		"/srv/games/scpsl",
+	} {
+		if err := d.validateInstallDir(p); err != nil {
+			t.Errorf("extra root %q should accept, got: %v", p, err)
+		}
+	}
+	// Outside all roots: rejected.
+	for _, p := range []string{
+		"/home/user/Downloads/foo",
+		"/tmp/srv",
+		"/var/lib/whatever",
+	} {
+		if err := d.validateInstallDir(p); err == nil {
+			t.Errorf("path %q outside all roots should be rejected", p)
+		}
+	}
+}
+
+// TestValidateInstallDir_AllowArbitrary verifies that
+// --allow-arbitrary-install-dir lets any absolute path through (still
+// with the reserved-system-path backstop).
+func TestValidateInstallDir_AllowArbitrary(t *testing.T) {
+	t.Parallel()
+	d := &v1ServerDeps{}
+	d.SetInstallRoot("/", nil, nil, false, true)
+
+	for _, p := range []string{
+		"/home/user/Downloads/foo",
+		"/tmp/srv",
+		"/var/lib/whatever",
+		"/Users/me/Projects/stuff",
+		"/home/skomesh/Steam/steamapps/common/SCP Pandemic Dedicated Server",
+	} {
+		if err := d.validateInstallDir(p); err != nil {
+			t.Errorf("allowArbitraryInstallDir=true: %q should be accepted, got %v", p, err)
+		}
+	}
+	// Reserved paths still rejected as a defense-in-depth backstop.
+	for _, p := range []string{"/etc/x", "/proc/cpuinfo", "/sys/kernel"} {
+		if err := d.validateInstallDir(p); err == nil {
+			t.Errorf("reserved path %q should still be rejected even with allowArbitraryInstallDir", p)
+		}
+	}
+}
+
 // TestValidateExecutablePath covers CRIT-1 — the executable allowlist.
 func TestValidateExecutablePath(t *testing.T) {
 	t.Parallel()
 	d := &v1ServerDeps{}
-	d.SetInstallRoot("/opt/servers", []string{"/opt/scpsl"}, false)
+	d.SetInstallRoot("/opt/servers", []string{"/opt/scpsl"}, nil, false, false)
 	cases := []struct {
 		name       string
 		exe        string
@@ -112,7 +175,7 @@ func TestValidateExecutablePath(t *testing.T) {
 func TestValidateExecutablePath_AllowArbitrary(t *testing.T) {
 	t.Parallel()
 	d := &v1ServerDeps{}
-	d.SetInstallRoot("/", nil, true) // tests' setup
+	d.SetInstallRoot("/", nil, nil, true, true) // tests' setup
 	for _, exe := range []string{"/bin/sh", "/usr/bin/id", "/anything/at/all"} {
 		if err := d.validateExecutablePath(exe, "/tmp"); err != nil {
 			t.Errorf("allowArbitraryExe=true: %q should be accepted, got %v", exe, err)
@@ -125,7 +188,7 @@ func TestValidateExecutablePath_AllowArbitrary(t *testing.T) {
 func TestExecArgsFromBody_NonStringArgvDropped(t *testing.T) {
 	t.Parallel()
 	d := &v1ServerDeps{}
-	d.SetInstallRoot("/", nil, true)
+	d.SetInstallRoot("/", nil, nil, true, true)
 	args := map[string]any{
 		"executable": "/bin/sh",
 		"argv":       []any{"-c", 42, "echo hi", nil, true},
@@ -144,7 +207,7 @@ func TestExecArgsFromBody_NonStringArgvDropped(t *testing.T) {
 func TestExecArgsFromBody_RejectsBadExecutable(t *testing.T) {
 	t.Parallel()
 	d := &v1ServerDeps{}
-	d.SetInstallRoot("/opt/servers", nil, false)
+	d.SetInstallRoot("/opt/servers", nil, nil, false, false)
 	args := map[string]any{"executable": "/usr/local/games/secret"}
 	_, _, err := d.execArgsFromBody(args, "/opt/servers/foo")
 	if err == nil {
@@ -160,7 +223,7 @@ func TestExecArgsFromBody_RejectsBadExecutable(t *testing.T) {
 func TestInstallRoot_TempDirRelativePath(t *testing.T) {
 	t.Parallel()
 	d := &v1ServerDeps{}
-	d.SetInstallRoot("/", nil, true)
+	d.SetInstallRoot("/", nil, nil, true, true)
 	abs, err := filepath.Abs(t.TempDir())
 	if err != nil {
 		t.Fatalf("Abs: %v", err)

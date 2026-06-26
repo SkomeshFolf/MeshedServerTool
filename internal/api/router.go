@@ -27,6 +27,15 @@ type RouterOptions struct {
 	// InstallRoot is the base directory under which install_dir must live.
 	// Required for server create/update. Default: empty (reject all).
 	InstallRoot string
+	// ExtraInstallRoots are additional absolute path prefixes that
+	// install_dir may live under (in addition to InstallRoot). Use
+	// this to whitelist multiple bases without going full-arbitrary,
+	// e.g. "/home/<user>/Steam/steamapps/common" alongside the default.
+	ExtraInstallRoots []string
+	// AllowArbitraryInstallDir disables the install_dir under-root
+	// check entirely. install_dir can be any absolute path. Use only
+	// in dev/testing or behind an external sandbox (container, jail).
+	AllowArbitraryInstallDir bool
 	// AllowedBinRoots are extra absolute path prefixes that executable may
 	// live under (in addition to /bin, /sbin, /usr/bin, /usr/sbin,
 	// /usr/local/bin which are always allowed).
@@ -93,7 +102,13 @@ func NewRouter(store *storage.Store, manager *server.Manager, h *hub.Hub, report
 	})
 	authDeps := (&v1AuthDeps{svc: authSvc, store: store}).WithTrustedProxies(trustedProxies...)
 	serverDeps := &v1ServerDeps{store: store, manager: manager}
-	serverDeps.SetInstallRoot(opts.InstallRoot, opts.AllowedBinRoots, opts.AllowArbitraryExecutable)
+	serverDeps.SetInstallRoot(
+		opts.InstallRoot,
+		opts.ExtraInstallRoots,
+		opts.AllowedBinRoots,
+		opts.AllowArbitraryExecutable,
+		opts.AllowArbitraryInstallDir,
+	)
 	reportsDeps := &v1ReportsDeps{store: reportsStore, hub: h}
 	bansDeps := &v1BansDeps{store: bansStore, hub: h}
 	chatDeps := &v1ChatDeps{store: chatStore}
