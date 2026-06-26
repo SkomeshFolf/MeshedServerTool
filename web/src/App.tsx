@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
 import {
   serversApi,
@@ -190,9 +190,12 @@ export default function App() {
   );
 }
 
-// Router-aware content area.
+// Router-aware content area. (bugfix) read the path from useLocation
+// rather than window.location.pathname so React re-renders us when the
+// URL changes. The window read was non-reactive, so navigating between
+// pages used to silently stay on the dashboard.
 function OutletWrapper({ servers }: { servers: ServerView[] }) {
-  const path = window.location.pathname;
+  const path = useLocation().pathname;
   if (path === "/servers/new") return <CreateServerPage />;
   if (path === "/reports") return <ReportsPage />;
   if (path === "/bans") return <BansPage />;

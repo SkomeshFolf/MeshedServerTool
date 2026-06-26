@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import App from "./App";
 import Login from "./pages/Login";
 import { AuthProvider, useAuth } from "./auth";
@@ -11,6 +11,7 @@ import "./styles.css";
 // bounce users to /login prematurely.
 function RequireAuth({ children }: { children: JSX.Element }) {
   const auth = useAuth();
+  const location = useLocation();
   if (auth.loading) {
     return (
       <main>
@@ -31,16 +32,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
-            path="/"
+            path="/*"
             element={
               <RequireAuth>
                 <App />
               </RequireAuth>
             }
-          >
-            <Route index element={null} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
