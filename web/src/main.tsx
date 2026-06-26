@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import App from "./App";
 import Login from "./pages/Login";
 import { AuthProvider, useAuth } from "./auth";
+import { ToastProvider } from "./toast";
 import "./styles.css";
 
 // RequireAuth gates a subtree on having an authenticated user. While the
@@ -28,19 +29,21 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/*"
-            element={
-              <RequireAuth>
-                <App />
-              </RequireAuth>
-            }
-          />
-        </Routes>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/*"
+              element={
+                <RequireAuth>
+                  <App />
+                </RequireAuth>
+              }
+            />
+          </Routes>
+        </AuthProvider>
+      </ToastProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

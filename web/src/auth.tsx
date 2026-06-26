@@ -6,16 +6,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, type Role } from "./api";
+import { useLocation, useNavigate } from "react-router-dom";
+import { api, SESSION_EXPIRED_EVENT, type Role } from "./api";
+import { useToast } from "./toast";
 
 export interface AuthState {
   /** True until the first /auth/status response has come back. */
   loading: boolean;
   /** True if a user is currently logged in. */
   authenticated: boolean;
-  /** The current user's role, or null if not logged in. */
+  /** The current user\'s role, or null if not logged in. */
   role: Role | null;
-  /** The current user's username, or null if not logged in. */
+  /** The current user\'s username, or null if not logged in. */
   username: string | null;
   /** True on a fresh install with no users yet — show the bootstrap form. */
   bootstrapAvailable: boolean;
@@ -121,9 +123,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{ ...state, login, logout, bootstrap, clearError }}
     >
+      <SessionExpiredBridge setAuthState={setState} />
       {children}
     </AuthContext.Provider>
   );
+}
+
+// SessionExpiredBridge listens for the global "session expired" event
+// fired by api.ts's request() helper. When it sees one, it clears the
+// auth state, shows a toast, and redirects to /login with the original
+// URL preserved so post-login the user lands back where they were.
+//
+// This is mounted as a child of AuthProvider so the auth state setter
+// is in scope. The bridge renders nothing — it's a side-effect-only
+// component.
+function SessionExpiredBridge({
+  setAuthState,
+}: {
+  setAuthState: React.Dispatch<React.SetStateAction<AuthState>>;
+}) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
+  useEffect(() => {
+    function onExpired() {
+      // Don't fire if we're already on /login — that's the redirect
+      // target and would either no-op or cause a double-fire.
+      if (location.pathname === "/login") return;
+      setAuthState((s) => ({
+        ...s,
+        authenticated: false,
+        role: null,
+        username: null,
+        bootstrapAvailable: false,
+      }));
+      toast.warn("Session expired. Please log in again.", 6000);
+      navigate("/login", {
+        replace: true,
+        state: { from: location.pathname },
+      });
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, [navigate, location.pathname, toast, setAuthState]);
+  return null;
 }
 
 export function useAuth(): AuthState & AuthActions {

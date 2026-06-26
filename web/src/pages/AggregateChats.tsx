@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { aggregateApi, serversApi, type ChatEntry, type ServerView } from "../serversApi";
+import { useToast } from "../toast";
 
 export default function AggregateChatsPage() {
+  const toast = useToast();
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [servers, setServers] = useState<ServerView[]>([]);
   const [filter, setFilter] = useState<string>("");
+  // `error` is inline-display; toast mirrors load failures.
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
@@ -24,7 +27,11 @@ export default function AggregateChatsPage() {
           setError(null);
         })
         .catch((e: unknown) => {
-          if (mounted) setError(e instanceof Error ? e.message : String(e));
+          if (mounted) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setError(msg);
+            toast.error(`Failed to load chats: ${msg}`);
+          }
         });
     };
 

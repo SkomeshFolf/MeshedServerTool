@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { aggregateApi, serversApi, type LogEntry, type ServerView } from "../serversApi";
+import { useToast } from "../toast";
 
 // Pick a stable, server-specific color so each server's lines stand
 // out without us having to hand-tune a palette. Hash the server name
@@ -22,9 +23,11 @@ function colorFor(name: string): string {
 }
 
 export default function AggregateLogsPage() {
+  const toast = useToast();
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [servers, setServers] = useState<ServerView[]>([]);
   const [filter, setFilter] = useState<string>("");
+  // `error` is inline-display; toast mirrors load failures.
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
@@ -44,7 +47,11 @@ export default function AggregateLogsPage() {
           setError(null);
         })
         .catch((e: unknown) => {
-          if (mounted) setError(e instanceof Error ? e.message : String(e));
+          if (mounted) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setError(msg);
+            toast.error(`Failed to load logs: ${msg}`);
+          }
         });
     };
 

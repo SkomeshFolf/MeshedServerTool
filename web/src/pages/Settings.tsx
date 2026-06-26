@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { settingsApi, type INIFile } from "../serversApi";
+import { useToast } from "../toast";
 
 export default function SettingsPage() {
   const { name } = useParams<{ name: string }>();
+  const toast = useToast();
   const [files, setFiles] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [ini, setIni] = useState<INIFile | null>(null);
+  // `error` for background load failures. Mutation failures use toasts.
   const [error, setError] = useState<string | null>(null);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // List INI files in the install dir.
@@ -16,7 +18,11 @@ export default function SettingsPage() {
     if (!name) return;
     settingsApi.list(name)
       .then((d) => setFiles(d.files || []))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to list settings: ${msg}`);
+      });
   }, [name]);
 
   // Load a file when selected.
@@ -25,7 +31,11 @@ export default function SettingsPage() {
     setBusy(true);
     settingsApi.read(name, selected)
       .then(setIni)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to read ${selected}: ${msg}`);
+      })
       .finally(() => setBusy(false));
   }, [name, selected]);
 
@@ -35,8 +45,9 @@ export default function SettingsPage() {
     try {
       await settingsApi.write(name, selected, ini);
       setError(null);
+      toast.success(`Saved ${selected}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -47,7 +58,7 @@ export default function SettingsPage() {
     setBusy(true);
     try {
       const r = await settingsApi.syncBans(name);
-      setSyncMsg(`Synced ${r.ban_count} bans to ${r.path}`);
+      toast.success(`Synced ${r.ban_count} bans to ${r.path}`);
       // Refresh file list and re-read BannedIDs.ini if visible
       const list = await settingsApi.list(name);
       setFiles(list.files || []);
@@ -56,7 +67,7 @@ export default function SettingsPage() {
         setIni(f);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -105,7 +116,6 @@ export default function SettingsPage() {
       </div>
 
       {error && <p className="error">{error}</p>}
-      {syncMsg && <p className="muted">{syncMsg}</p>}
 
       <div className="settings-layout">
         <aside className="settings-files">

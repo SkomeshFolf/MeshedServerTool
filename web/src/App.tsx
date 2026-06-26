@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
+import { useToast } from "./toast";
 import {
   serversApi,
   reportsApi,
@@ -25,6 +26,7 @@ import "./styles.css";
 export default function App() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [health, setHealth] = useState<Health | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [servers, setServers] = useState<ServerView[]>([]);
@@ -108,6 +110,28 @@ export default function App() {
     onConnectionChange: setWsConnected,
   });
 
+  // Surface WebSocket connection transitions as toasts. Skip the very
+  // first transition so we don't show "disconnected" before the
+  // socket has had a chance to connect. After that, every change
+  // produces a toast (the badge in the topbar already tracks status,
+  // this is a redundancy that catches the operator's peripheral
+  // vision).
+  const prevWsRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (prevWsRef.current === null) {
+      // First observation — record without toasting.
+      prevWsRef.current = wsConnected;
+      return;
+    }
+    if (wsConnected === prevWsRef.current) return;
+    prevWsRef.current = wsConnected;
+    if (wsConnected) {
+      toast.success("Live updates connected", 2500);
+    } else {
+      toast.warn("Live updates disconnected — reconnecting…", 4000);
+    }
+  }, [wsConnected, toast]);
+
   useEffect(() => {
     fetch("/healthz")
       .then((r) => r.json())
@@ -136,6 +160,7 @@ export default function App() {
 
   const handleLogout = async () => {
     await auth.logout();
+    toast.info("Signed out", 2000);
     navigate("/login", { replace: true });
   };
 
@@ -278,6 +303,7 @@ function DashboardPage({ servers }: { servers: ServerView[] }) {
 
 function CreateServerPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [name, setName] = useState("");
   const [installDir, setInstallDir] = useState("");
   const [port, setPort] = useState(7777);
@@ -285,6 +311,8 @@ function CreateServerPage() {
   const [hostname, setHostname] = useState("");
   const [executable, setExecutable] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // `error` is inline (next to the submit button). Mutations failures
+  // also surface as toasts so the message isn't lost when navigating.
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -303,9 +331,12 @@ function CreateServerPage() {
         args,
         autostart: false,
       });
+      toast.success(`Server "${created.name}" created`);
       navigate(`/servers/${encodeURIComponent(created.name)}`, { replace: true });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "create failed");
+      const msg = e instanceof Error ? e.message : "create failed";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -395,7 +426,11 @@ function CreateServerPage() {
 }
 
 function ServerDetailPage({ name }: { name: string }) {
+  const toast = useToast();
   const [server, setServer] = useState<ServerView | null>(null);
+  // `error` is the inline display. Mutation failures also toast so the
+  // message survives navigation (the user might click "Start" then
+  // navigate to dashboard before the toast fades).
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -406,7 +441,12 @@ function ServerDetailPage({ name }: { name: string }) {
     serversApi
       .get(name)
       .then((s) => mounted && setServer(s))
-      .catch((e) => mounted && setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => {
+        if (!mounted) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to load ${name}: ${msg}`);
+      });
     return () => { mounted = false; };
   }, [name]);
 
@@ -437,14 +477,20 @@ function ServerDetailPage({ name }: { name: string }) {
           return;
         }
         await serversApi.delete(name);
+        toast.success(`Server "${name}" deleted`);
         navigate("/", { replace: true });
         return;
       }
       const fn = serversApi[kind];
       const updated = await fn(name);
       setServer(updated);
+      // Pick a verb that matches the resulting state for the message.
+      const verb = kind === "start" ? "Starting" : kind === "stop" ? "Stopping" : "Restarting";
+      toast.success(`${verb} ${name}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : `${kind} failed`);
+      const msg = e instanceof Error ? e.message : `${kind} failed`;
+      setError(msg);
+      toast.error(`${kind} ${name}: ${msg}`);
     } finally {
       setBusy(null);
     }
@@ -547,6 +593,7 @@ function ServerDetailPage({ name }: { name: string }) {
 }
 
 function LogViewer({ name }: { name: string }) {
+  const toast = useToast();
   const [lines, setLines] = useState<LogLine[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -556,7 +603,10 @@ function LogViewer({ name }: { name: string }) {
     serversApi.logsTail(name, 200).then((l) => {
       if (mounted) setLines(l);
     }).catch((e: unknown) => {
-      if (mounted) setStreamError(e instanceof Error ? e.message : String(e));
+      if (!mounted) return;
+      const msg = e instanceof Error ? e.message : String(e);
+      setStreamError(msg);
+      toast.error(`Failed to load logs for ${name}: ${msg}`);
     });
     return () => { mounted = false; };
   }, [name]);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { tabsApi, type PlayersTab, type TabName } from "../serversApi";
+import { useToast } from "../toast";
 
 // Per-server settings tabs page.
 //
@@ -86,8 +87,11 @@ export default function SettingsTabsPage() {
 // --- shared: load+save + error display ---
 
 function useEntries(serverName: string, tab: "map" | "server" | "gameplay") {
+  const toast = useToast();
   const [entries, setEntries] = useState<Record<string, string> | null>(null);
   const [dirty, setDirty] = useState<Record<string, string> | null>(null);
+  // `error` for background load failures. Save failures use toasts so
+  // they remain visible while the user reads the form state.
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -101,7 +105,11 @@ function useEntries(serverName: string, tab: "map" | "server" | "gameplay") {
         setEntries(d);
         setDirty(d);
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to load ${tab} tab: ${msg}`);
+      });
   }, [serverName, tab]);
 
   const isDirty = useMemo(() => dirty !== null && entries !== null && !shallowEq(dirty, entries), [dirty, entries]);
@@ -134,8 +142,9 @@ function useEntries(serverName: string, tab: "map" | "server" | "gameplay") {
       const api = tabsApi[tab];
       await api.put(serverName, dirty);
       setEntries(dirty);
+      toast.success(`Saved ${tab} tab`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -347,6 +356,7 @@ function GameplayTab({ serverName }: { serverName: string }) {
 // --- players tab ---
 
 function PlayersTabPane({ serverName }: { serverName: string }) {
+  const toast = useToast();
   const [data, setData] = useState<PlayersTab | null>(null);
   const [dirty, setDirty] = useState<PlayersTab | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -358,7 +368,11 @@ function PlayersTabPane({ serverName }: { serverName: string }) {
     setError(null);
     tabsApi.players.get(serverName)
       .then((d) => { setData(d); setDirty(d); })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to load players tab: ${msg}`);
+      });
   }, [serverName]);
 
   const update = (k: keyof PlayersTab, ids: string[]) => {
@@ -372,8 +386,9 @@ function PlayersTabPane({ serverName }: { serverName: string }) {
     try {
       await tabsApi.players.put(serverName, dirty);
       setData(dirty);
+      toast.success("Saved players tab");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

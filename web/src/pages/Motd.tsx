@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { motdApi, type MOTD } from "../serversApi";
+import { useToast } from "../toast";
 
 export default function MotdPage() {
+  const toast = useToast();
   const [global, setGlobal] = useState<MOTD | null>(null);
   const [perServer, setPerServer] = useState<MOTD[]>([]);
   const [editing, setEditing] = useState<string | null>(null); // "*" or server name
   const [draft, setDraft] = useState("");
   const [enabled, setEnabled] = useState(true);
+  // `error` is for background load failures only.
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -17,7 +20,11 @@ export default function MotdPage() {
         setPerServer(d.servers || []);
         setError(null);
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to load MOTD: ${msg}`);
+      });
   };
 
   useEffect(() => { load(); }, []);
@@ -33,14 +40,16 @@ export default function MotdPage() {
     try {
       if (editing === "*") {
         await motdApi.setGlobal(draft);
+        toast.success("Global MOTD saved");
       } else if (editing) {
         await motdApi.setForServer(editing, { message: draft, enabled });
+        toast.success(`MOTD for ${editing} saved`);
       }
       setEditing(null);
       setDraft("");
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -52,8 +61,9 @@ export default function MotdPage() {
     try {
       await motdApi.deleteForServer(serverName);
       load();
+      toast.success(`Removed MOTD override for ${serverName}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

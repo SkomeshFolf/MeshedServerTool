@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { reportsApi, bansApi, type Report } from "../serversApi";
 import { useWebSocket, type WSMessage } from "../useWebSocket";
+import { useToast } from "../toast";
 
 export default function ReportsPage() {
+  const toast = useToast();
   const [reports, setReports] = useState<Report[]>([]);
   const [perUser, setPerUser] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<"all" | "unhandled" | "handled">("unhandled");
+  // `error` is for load failures only (background, not user-initiated).
+  // Mutation failures surface as toasts instead.
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
 
@@ -18,7 +22,11 @@ export default function ReportsPage() {
         setPerUser(d.reports_per_user);
         setError(null);
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to load reports: ${msg}`);
+      });
   };
 
   useEffect(() => { load(); }, [filter]);
@@ -37,8 +45,9 @@ export default function ReportsPage() {
     try {
       await reportsApi.markHandled(r.id, handled);
       load();
+      toast.success(handled ? `Report #${r.id} marked handled` : `Report #${r.id} reopened`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -54,8 +63,9 @@ export default function ReportsPage() {
       });
       await reportsApi.markHandled(r.id, true);
       load();
+      toast.success(`Banned ${r.target_name || r.target_id} and handled report #${r.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -67,8 +77,9 @@ export default function ReportsPage() {
     try {
       await reportsApi.delete(r.id);
       load();
+      toast.success(`Report #${r.id} deleted`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }

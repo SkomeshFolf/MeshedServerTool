@@ -19,6 +19,15 @@ export interface MeResponse {
 
 const API = ""; // same-origin; Vite proxy in dev, embedded static in prod
 
+// Custom DOM event for session expiry. Fired from request() when it
+// sees a 401 that wasn't itself the /auth/* call. The AuthProvider
+// listens for this and clears state + redirects to /login. Keeps the
+// fetch helper free of React Router / context dependencies.
+export const SESSION_EXPIRED_EVENT = "meshed:session-expired";
+function fireSessionExpired(path: string) {
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: { path } }));
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -38,6 +47,14 @@ async function request<T>(
       if (body?.error) msg = body.error;
     } catch {
       // body wasn't JSON; keep the status text
+    }
+    // Session expiry: any 401 on a non-auth endpoint means the cookie
+    // is stale or the user was deleted. Fire the global event so the
+    // auth provider can clear state and redirect to /login. The
+    // thrown error still surfaces to the caller so the per-call
+    // catch (which now produces a toast) doesn't go silent.
+    if (res.status === 401 && !path.startsWith("/api/v1/auth/")) {
+      fireSessionExpired(path);
     }
     throw new Error(msg);
   }

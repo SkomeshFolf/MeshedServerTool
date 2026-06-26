@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { bansApi, type Ban } from "../serversApi";
 import { useWebSocket, type WSMessage } from "../useWebSocket";
+import { useToast } from "../toast";
 
 export default function BansPage() {
+  const toast = useToast();
   const [bans, setBans] = useState<Ban[]>([]);
+  // `error` is for background load failures only. Mutation failures
+  // surface as toasts instead so they don't vanish on next render.
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -14,7 +18,11 @@ export default function BansPage() {
   const load = () => {
     bansApi.list()
       .then(setBans)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to load bans: ${msg}`);
+      });
   };
 
   useEffect(() => { load(); }, []);
@@ -34,8 +42,9 @@ export default function BansPage() {
       setSteamId(""); setPlayerName(""); setReason("");
       setAdding(false);
       load();
+      toast.success(`Banned ${playerName || steamId}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -47,8 +56,9 @@ export default function BansPage() {
     try {
       await bansApi.remove(b.id);
       load();
+      toast.success(`Unbanned ${b.player_name || b.steam_id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }

@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
+import { useToast } from "../toast";
 
 export default function Login() {
   const auth = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? "/";
@@ -25,7 +27,10 @@ export default function Login() {
         onSubmitting={setSubmitting}
         error={auth.error}
         clearError={auth.clearError}
-        onSuccess={() => navigate(from, { replace: true })}
+        onSuccess={() => {
+          toast.success(`Welcome, ${username}. Admin account created.`);
+          navigate(from, { replace: true });
+        }}
         submit={auth.bootstrap}
       />
     );
@@ -37,9 +42,11 @@ export default function Login() {
     setSubmitting(true);
     try {
       await auth.login(username, password);
+      toast.success(`Welcome back, ${username}.`);
       navigate(from, { replace: true });
     } catch {
-      // error already on auth state
+      // error already on auth state; toast would be redundant next to
+      // the inline message under the form.
     } finally {
       setSubmitting(false);
     }

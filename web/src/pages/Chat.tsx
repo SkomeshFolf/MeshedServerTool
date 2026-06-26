@@ -3,11 +3,15 @@ import { useParams } from "react-router-dom";
 import { chatApi, type ChatMessage } from "../serversApi";
 import { useWebSocket, type WSMessage } from "../useWebSocket";
 import { serversApi, type LogLine } from "../serversApi";
+import { useToast } from "../toast";
 
 export default function ChatPage() {
   const { name } = useParams<{ name: string }>();
+  const toast = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [serverExists, setServerExists] = useState<boolean | null>(null);
+  // `error` is the inline display; toast mirrors it so the user sees
+  // the failure even if they navigate away.
   const [error, setError] = useState<string | null>(null);
 
   // Verify server exists, then load history.
@@ -18,7 +22,11 @@ export default function ChatPage() {
       .catch(() => setServerExists(false));
     chatApi.list(name, 500)
       .then(setMessages)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Failed to load chat: ${msg}`);
+      });
   }, [name]);
 
   // Live updates: append chat-typed log lines to the list.
